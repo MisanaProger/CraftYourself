@@ -94,7 +94,12 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
 - **ADI va Skill Matrix.** Har bir yakunlangan Issue bo‘yicha AI’ga
   bog‘liqlik indeksi kuzatilgan hodisalar asosida hisoblanadi va ikki marta
   so‘nish bilan o‘rtachalanadi (30 kun / 10 Issue). Engineering Skill Matrix
-  tekshirilmagan ko‘nikmani 0 emas, «baholanmagan» deb ko‘rsatadi. Ular mustaqil.
+  ko‘nikmalarni kuzatilgan dalillar bo‘yicha baholaydi — test urinishlari,
+  trenajyor natijalari, yakunlangan amaliyot va Issue’lar (testlar, qabul
+  mezonlari, yordam darajalari) — holat, ishonchlilik, o‘lchovlar (nazariya,
+  amaliyot, diagnostika, mustaqillik) va tarix bilan. Darslarni o‘qish dalil
+  hisoblanmaydi, tekshirilmagan ko‘nikma 0 emas, «baholanmagan». Ular mustaqil:
+  ADI bahoga kirmaydi.
 - **Desktop ilova (Tauri)** Linux, Windows va macOS uchun; xuddi shu interfeys brauzerda ham ishlaydi.
 - **Interfeys rus, ingliz va o‘zbek tillarida**; qorong‘i va yorug‘ mavzular.
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
