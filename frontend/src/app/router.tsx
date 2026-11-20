@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AdiPage } from "../analytics/AdiPage";
+import { KnowledgePage } from "../analytics/KnowledgePage";
 import { SkillMatrixPage } from "../analytics/SkillMatrixPage";
 import { ConversationPage } from "../chat/ConversationPage";
 import { useT } from "../i18n";
@@ -35,6 +36,7 @@ export function AppRouter() {
           <Route path="projects/:id" element={<ProjectPage />} />
           <Route path="skills" element={<SkillMatrixPage />} />
           <Route path="adi" element={<AdiPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>

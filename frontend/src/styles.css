@@ -500,3 +500,10 @@ a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
 .rec-action { align-items: flex-start; }
 .rec-data summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
 .rec-json { max-height: 320px; overflow: auto; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; font-size: 0.78rem; }
+
+/* Session summaries and the Knowledge Profile */
+.signals { list-style: none; padding: 0; margin: 0.5rem 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip.good, .chip.standing-independent { color: var(--ok); border-color: currentColor; }
+.chip.warn, .chip.standing-needs_practice { color: var(--warn); border-color: currentColor; }
+.summary-panel { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.session-summary .kv { margin: 0.6rem 0 0; }

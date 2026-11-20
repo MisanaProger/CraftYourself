@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { SessionSummaryPanel } from "../analytics/SessionSummaryCard";
 import { Icon } from "../app/icons";
 import { Markdown } from "../chat/Markdown";
 import { useT } from "../i18n";
@@ -76,7 +77,7 @@ export function IssuePanel({ task, session, onAsk }: { task: Task | null; sessio
   const complete = useMutation({
     mutationFn: () => api.completeTask(task!.id),
     onSuccess: () => {
-      for (const k of ["sessions", "tasks", "adi", "program", "programs"]) qc.invalidateQueries({ queryKey: [k] });
+      for (const k of ["sessions", "tasks", "adi", "program", "programs", "knowledge", "summary"]) qc.invalidateQueries({ queryKey: [k] });
       qc.invalidateQueries({ queryKey: ["session", session?.id] });
     },
   });
@@ -153,6 +154,7 @@ export function IssuePanel({ task, session, onAsk }: { task: Task | null; sessio
           <p className="hint">{t("issue.completeHint")}</p>
         </div>
       )}
+      {session && !active && <SessionSummaryPanel sessionId={session.id} />}
       <ErrorBox error={open.error ?? complete.error} />
       {open.data && <p className="ok small">{t("issue.launched", { command: open.data.command })}</p>}
     </div>
