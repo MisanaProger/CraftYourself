@@ -83,6 +83,20 @@ fn infra(e: impl std::fmt::Display) -> AppError {
     AppError::Infrastructure(e.to_string())
 }
 
+/// The error with its causes (`error sending request` alone hides a TLS or
+/// DNS failure); the URL is left out.
+fn describe(e: reqwest::Error) -> String {
+    let e = e.without_url();
+    let mut text = e.to_string();
+    let mut source = std::error::Error::source(&e);
+    while let Some(s) = source {
+        text.push_str(": ");
+        text.push_str(&s.to_string());
+        source = s.source();
+    }
+    text
+}
+
 fn token(var: &Option<String>) -> Option<String> {
     var.as_deref()
         .and_then(|v| std::env::var(v).ok())
@@ -131,7 +145,7 @@ impl HttpRemote {
         let res = req
             .send()
             .await
-            .map_err(|e| infra(format!("{what}: {}", e.without_url())))?;
+            .map_err(|e| infra(format!("{what}: {}", describe(e))))?;
         let status = res.status();
         if res
             .content_length()
@@ -139,7 +153,7 @@ impl HttpRemote {
         {
             return Err(infra(format!("{what}: the response is too large")));
         }
-        let body = res.bytes().await.map_err(|e| infra(e.without_url()))?;
+        let body = res.bytes().await.map_err(|e| infra(describe(e)))?;
         if body.len() > MAX_RESPONSE_BYTES {
             return Err(infra(format!("{what}: the response is too large")));
         }
