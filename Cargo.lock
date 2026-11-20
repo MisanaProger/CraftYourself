@@ -483,6 +483,7 @@ dependencies = [
 name = "est-ai-policy"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "est-core",
  "est-domain",
  "globset",
@@ -631,6 +632,17 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror",
+ "url",
+]
+
+[[package]]
+name = "est-issues"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "est-core",
+ "est-domain",
+ "serde",
  "url",
 ]
 

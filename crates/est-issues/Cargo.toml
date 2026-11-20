@@ -1,0 +1,13 @@
+[package]
+name = "est-issues"
+description = "Open-source Issues from GitHub and GitLab: links, suitability check and the task they become (pure)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+est-core.workspace = true
+est-domain.workspace = true
+serde.workspace = true
+url.workspace = true
