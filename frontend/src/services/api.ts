@@ -5,6 +5,8 @@ import type {
   ConversationView,
   Criterion,
   GenerateProgram,
+  ImportProblem,
+  ProblemSummary,
   GeneratedProgram,
   LearningSession,
   LessonProgress,
@@ -113,6 +115,8 @@ export const api = {
   artifactProgress: (p: string, l: string, score: number, completed: boolean) =>
     json<LessonProgress>("POST", `/learning/programs/${p}/lessons/${l}/progress`, { score, completed }),
   startPractice: (p: string, l: string) => json<StartedSession>("POST", `/learning/programs/${p}/lessons/${l}/practice`, {}),
+  problems: () => json<ProblemSummary[]>("GET", "/problems"),
+  importProblem: (p: ImportProblem) => json<StartedSession>("POST", "/problems", p),
   generatedPrograms: () => json<GeneratedProgram[]>("GET", "/learning/generated"),
   generateProgram: (req: GenerateProgram) => json<GeneratedProgram>("POST", "/learning/generated", req),
   deleteGeneratedProgram: (id: string) => send("DELETE", `/learning/generated/${encodeURIComponent(id)}`),

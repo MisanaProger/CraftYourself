@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { TasksPage } from "../issue/TasksPage";
 import { LessonPage } from "../learning/LessonPage";
 import { ProgramPage } from "../learning/ProgramPage";
+import { ProblemsPage } from "../problems/ProblemsPage";
 import { ProjectPage } from "../project/ProjectPage";
 import { ProjectsPage } from "../project/ProjectsPage";
 import { SettingsPage } from "../settings/SettingsPage";
@@ -29,6 +30,7 @@ export function AppRouter() {
           <Route path="learning/:program" element={<ProgramPage />} />
           <Route path="learning/:program/:lesson" element={<LessonPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route path="problems" element={<ProblemsPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:id" element={<ProjectPage />} />
           <Route path="skills" element={<SkillMatrixPage />} />

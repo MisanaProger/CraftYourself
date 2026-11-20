@@ -81,6 +81,11 @@ export const Icon = {
       <path {...P} d="M8 12l3 3 5-6" />
     </svg>
   ),
+  problem: () => (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+      <path {...P} d="M8 5l-5 7 5 7M16 5l5 7-5 7M13.5 4l-3 16" />
+    </svg>
+  ),
   projects: () => (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
       <path {...P} d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

@@ -1,6 +1,6 @@
 // Types mirror the JSON produced by the Rust API (`/api/v1`).
 
-export type TaskType = "bug-fix" | "feature" | "refactoring" | "documentation" | "performance" | "testing" | "regression";
+export type TaskType = "bug-fix" | "feature" | "refactoring" | "documentation" | "performance" | "testing" | "regression" | "algorithm";
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 export type TaskStatus = "open" | "in-progress" | "done" | "archived";
 export type SessionStatus = "active" | "completed" | "abandoned";
@@ -442,4 +442,36 @@ export interface QuizResult {
   score: number;
   passed: boolean;
   results: { id: string; chosen: number | null; correct: boolean; answer: number; explanation: string }[];
+}
+
+export type ProblemLanguage = "python" | "cpp" | "rust";
+
+export interface Sample {
+  input: string;
+  output: string;
+}
+
+export interface ImportProblem {
+  url?: string;
+  title?: string;
+  statement: string;
+  samples: Sample[];
+  tags: string[];
+  rating?: number;
+  difficulty?: "easy" | "medium" | "hard";
+  language: ProblemLanguage;
+  lang: string;
+}
+
+export interface ProblemSummary {
+  task_id: string;
+  title: string;
+  platform: "codeforces" | "leetcode" | "other";
+  problem_id: string;
+  url: string | null;
+  difficulty: Difficulty;
+  status: TaskStatus;
+  session_id: string | null;
+  conversation_id: string | null;
+  created_at: string;
 }

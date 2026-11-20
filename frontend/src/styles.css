@@ -475,3 +475,20 @@ pre.output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 
 .html-page-bar button { background: transparent; border-color: transparent; }
 .html-page-bar button[aria-selected="true"] { border-color: var(--border); background: var(--surface-2); }
 iframe.page-frame { height: 360px; }
+
+/* Problem analysis */
+a.button.secondary { background: transparent; color: var(--text); }
+a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
+.problems-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
+.problem-form textarea { width: 100%; }
+.samples { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.8rem; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.samples legend { padding: 0 0.3rem; color: var(--muted); font-size: 0.88rem; }
+.sample-row { display: grid; grid-template-columns: auto 1fr 1fr auto; gap: 0.5rem; align-items: start; }
+.samples > button { width: fit-content; }
+.sample-num { color: var(--muted); padding-top: 1.6rem; font-size: 0.85rem; }
+.problem-options { align-items: flex-end; }
+.problem-options .grow { flex: 1; min-width: 12rem; }
+.problem-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.problem-item { display: flex; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; align-items: center; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
+.problem-item:last-child { border-bottom: none; }
+@media (max-width: 900px) { .problems-layout { grid-template-columns: 1fr; } .sample-row { grid-template-columns: 1fr; } .sample-num { padding: 0; } }
