@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use est_core::{ProjectId, SessionId, TaskId, Timestamp, UserId};
+use est_core::{ConversationId, ProjectId, SessionId, TaskId, Timestamp, UserId};
 use serde::{Deserialize, Serialize};
 
 use crate::DomainError;
@@ -46,6 +46,8 @@ pub struct LearningSession {
     pub user_id: UserId,
     pub project_id: ProjectId,
     pub task_id: TaskId,
+    /// The Issue's conversation (`None` if the learner deleted it).
+    pub conversation_id: Option<ConversationId>,
     /// The task's own working directory, opened in the learner's IDE.
     pub workspace_path: PathBuf,
     pub branch: String,
@@ -87,6 +89,7 @@ mod tests {
             user_id: UserId::generate(),
             project_id: ProjectId::generate(),
             task_id: TaskId::generate(),
+            conversation_id: None,
             workspace_path: "/tmp/ws".into(),
             branch: "est/x".into(),
             base_revision: "a".repeat(40),

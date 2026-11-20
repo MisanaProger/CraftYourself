@@ -1,0 +1,18 @@
+[package]
+name = "est-ai"
+description = "AI Gateway: LLM providers behind the application's LlmProvider port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+est-application.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tokio.workspace = true

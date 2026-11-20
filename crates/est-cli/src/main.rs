@@ -7,10 +7,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand};
 use est_api::{Config, Runtime};
-use est_application::{AddProject, App, MentorAsk};
-use est_core::TaskId;
+use est_application::{AddProject, App, ConversationView, PostMessage};
+use est_core::{ConversationId, EscalationId, TaskId};
 use est_domain::{
-    Difficulty, HelpLevel, LearningSession, NewTask, SessionOutcome, TaskSource, TaskType,
+    Card, Difficulty, LearningSession, Message, MessageRole, NewTask, SessionOutcome, TaskSource,
+    TaskType,
 };
 use est_workspace::EstHome;
 
@@ -18,7 +19,7 @@ use est_workspace::EstHome;
 #[command(
     name = "est",
     version,
-    about = "Engineering Skills Trainer — learn by working on real code"
+    about = "Craft Yourself — build skills, not dependencies"
 )]
 struct Cli {
     /// EST data directory (default: $EST_HOME or ~/.est).
@@ -49,9 +50,53 @@ enum Command {
     /// Learning sessions.
     #[command(subcommand)]
     Session(SessionCmd),
-    /// Ask the AI mentor (subject to the AI Policy Engine).
+    /// Talk to the mentor in the current Issue's conversation.
+    Chat {
+        message: String,
+        /// Documentation fragment with terms to explain.
+        #[arg(long)]
+        excerpt: Option<String>,
+        #[command(flatten)]
+        sel: SessionSel,
+    },
+    /// Answer the pending proposal to raise the engagement level.
     #[command(subcommand)]
-    Mentor(MentorCmd),
+    Escalation(EscalationCmd),
+    /// Conversations: list and export.
+    #[command(subcommand)]
+    Conversation(ConversationCmd),
+    /// AI Dependency Index with double decay.
+    Adi,
+    /// Your data.
+    #[command(subcommand)]
+    Data(DataCmd),
+}
+
+#[derive(Subcommand)]
+enum EscalationCmd {
+    /// Raise the level by one step and re-process the blocked request.
+    Accept(SessionSel),
+    /// Stay at the current level; the request is answered within it.
+    Reject(SessionSel),
+}
+
+#[derive(Subcommand)]
+enum ConversationCmd {
+    List,
+    /// Print a conversation with its messages as JSON.
+    Export {
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum DataCmd {
+    /// Export everything EST stores about you as JSON.
+    Export {
+        /// Output file (default: stdout).
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -77,6 +122,10 @@ enum TaskCmd {
     /// Import an Exercise Manifest (TOML).
     Import {
         manifest: PathBuf,
+    },
+    /// Complete the task: finish its session and get the final ADI.
+    Complete {
+        task: String,
     },
     /// Start (or resume) a task in its own workspace.
     Start {
@@ -137,22 +186,6 @@ enum SessionCmd {
     },
 }
 
-#[derive(Subcommand)]
-enum MentorCmd {
-    Ask {
-        question: String,
-        /// Requested help level 0–4.
-        #[arg(long, default_value_t = 1)]
-        level: u8,
-        /// Documentation fragment with terms to explain.
-        #[arg(long)]
-        excerpt: Option<String>,
-        #[command(flatten)]
-        sel: SessionSel,
-    },
-    History(SessionSel),
-}
-
 fn parse_kebab<T: serde::de::DeserializeOwned>(what: &str, s: &str) -> Result<T> {
     serde_json::from_value(serde_json::Value::String(s.to_owned()))
         .map_err(|_| anyhow!("unknown {what} `{s}`"))
@@ -200,6 +233,13 @@ impl Ctx {
         self.app.session_for_path(&cwd).await.map_err(|_| {
             anyhow!("not inside an EST workspace: run this in a task's workspace or pass --session")
         })
+    }
+
+    /// The conversation of the selected session's Issue.
+    async fn conversation(&self, sel: &SessionSel) -> Result<ConversationId> {
+        let s = self.session(sel).await?;
+        let task = self.app.get_task(&s.task_id).await?;
+        Ok(self.app.conversation_for_task(&task).await?.id)
     }
 }
 
@@ -263,6 +303,32 @@ async fn serve(home: EstHome) -> Result<()> {
         .with_context(|| format!("cannot listen on {bind}"))?;
     tracing::info!("listening on http://{}", listener.local_addr()?);
     est_api::serve(listener, rt, frontend.as_deref()).await
+}
+
+fn print_messages(messages: &[Message]) {
+    for m in messages {
+        let who = match m.role {
+            MessageRole::User => "you",
+            MessageRole::Assistant => "mentor",
+            MessageRole::System => "craft",
+        };
+        println!("[{} · {}] {}", who, m.level.code(), m.content);
+        for card in &m.cards {
+            match card {
+                Card::Sources { links, .. } => {
+                    for l in links {
+                        println!("  → {}  ({})", l.target, l.title);
+                    }
+                }
+                Card::Escalation { from, to, .. } => println!(
+                    "  ⇧ {} → {}: run `est escalation accept` or `est escalation reject`",
+                    from.code(),
+                    to.code()
+                ),
+                Card::PolicyNotice { text } => println!("  ! {text}"),
+            }
+        }
+    }
 }
 
 fn session_line(s: &LearningSession) -> String {
@@ -415,7 +481,7 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
                     difficulty: parse_kebab::<Difficulty>("difficulty", &c.difficulty)?,
                     source: TaskSource::Manual,
                     learning_goals: vec![],
-                    skills: vec![],
+                    disciplines: vec![],
                     base_revision: c.base,
                     test_command: None,
                     mentor: None,
@@ -529,60 +595,121 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
             println!("session {} {}", s.id.short(), s.status.as_str());
         }
 
-        Command::Mentor(MentorCmd::Ask {
-            question,
-            level,
+        Command::Task(TaskCmd::Complete { task }) => {
+            let id = ctx.task_id(&task).await?;
+            let s = app.complete_task(&id).await?;
+            let adi = app.adi_overview().await?;
+            if ctx.json {
+                return print_json(&serde_json::json!({ "session": s, "adi": adi }));
+            }
+            println!("task completed (session {})", s.id.short());
+            if let Some(a) = adi.history.first() {
+                println!(
+                    "ADI for this Issue: {} — {}",
+                    a.assessment.score, a.assessment.explanation
+                );
+            }
+        }
+        Command::Chat {
+            message,
             excerpt,
             sel,
-        }) => {
-            let s = ctx.session(&sel).await?;
-            let level = HelpLevel::try_from(level).map_err(|e| anyhow!(e))?;
-            let a = app
-                .mentor_ask(
-                    &s.id,
-                    MentorAsk {
-                        question,
+        } => {
+            let conv = ctx.conversation(&sel).await?;
+            let replies = app
+                .post_message(
+                    &conv,
+                    PostMessage {
+                        content: message,
                         excerpt,
-                        level: Some(level),
                     },
                 )
                 .await?;
             if ctx.json {
-                return print_json(&a);
+                return print_json(&replies);
             }
-            let kind = serde_json::to_value(&a.decision.kind)?;
-            println!("question type: {}", kind["type"].as_str().unwrap_or("?"));
-            println!(
-                "help level:    {} ({}){}",
-                a.decision.help.granted.as_u8(),
-                a.decision.help.granted.label(),
-                a.decision
-                    .help
-                    .limited_by
-                    .as_deref()
-                    .map(|r| format!(" — {r}"))
-                    .unwrap_or_default()
-            );
-            println!("{}", a.note);
-            for l in &a.links {
-                println!("  → {}  ({})", l.target, l.title);
+            print_messages(&replies[1..]);
+        }
+        Command::Escalation(cmd) => {
+            let (sel, accept) = match cmd {
+                EscalationCmd::Accept(s) => (s, true),
+                EscalationCmd::Reject(s) => (s, false),
+            };
+            let conv = ctx.conversation(&sel).await?;
+            let pending = app
+                .conversation_view(&conv)
+                .await?
+                .pending_escalation
+                .ok_or_else(|| anyhow!("there is no pending escalation in this conversation"))?;
+            let id: EscalationId = pending.id;
+            let replies = if accept {
+                app.accept_escalation(&id).await?
+            } else {
+                app.reject_escalation(&id).await?
+            };
+            if ctx.json {
+                return print_json(&replies);
+            }
+            let level = app.engagement(&conv).await?.level;
+            println!("engagement level: {} ({})", level.code(), level.name_ru());
+            print_messages(&replies);
+        }
+        Command::Conversation(ConversationCmd::List) => {
+            let cs = app.list_conversations().await?;
+            if ctx.json {
+                return print_json(&cs);
+            }
+            for c in cs {
+                let level = app.engagement(&c.id).await?.level;
+                println!("{}  {}  {}", c.id.short(), level.code(), c.title);
             }
         }
-        Command::Mentor(MentorCmd::History(sel)) => {
-            let s = ctx.session(&sel).await?;
-            let h = app.mentor_history(&s.id).await?;
+        Command::Conversation(ConversationCmd::Export { id }) => {
+            let conv = app
+                .list_conversations()
+                .await?
+                .into_iter()
+                .find(|c| c.id.as_str().starts_with(&id))
+                .ok_or_else(|| anyhow!("no conversation matches `{id}`"))?;
+            let view: ConversationView = app.conversation_view(&conv.id).await?;
+            print_json(&view)?;
+        }
+        Command::Adi => {
+            let o = app.adi_overview().await?;
             if ctx.json {
-                return print_json(&h);
+                return print_json(&o);
             }
-            for e in h {
-                println!(
-                    "{}  level {}→{}  {}  {}",
-                    e.event.at.format("%Y-%m-%d %H:%M"),
-                    e.event.payload["requested_level"],
-                    e.event.payload["granted_level"],
-                    e.event.payload["action"].as_str().unwrap_or(""),
-                    e.event.payload["question"].as_str().unwrap_or("")
-                );
+            match o.aggregate.value {
+                None => println!("ADI: no completed Issues yet"),
+                Some(v) => {
+                    println!(
+                        "ADI: {v:.1}{} — {} Issue(s), confidence {:?}",
+                        if o.aggregate.provisional {
+                            " (provisional)"
+                        } else {
+                            ""
+                        },
+                        o.aggregate.issues,
+                        o.aggregate.confidence
+                    );
+                    if let Some(label) = o.status_label {
+                        println!("status: {label}\n{}", o.disclaimer);
+                    }
+                }
+            }
+            println!(
+                "decay: T_t = {} days, T_n = {} Issues",
+                o.params.half_life_days, o.params.half_life_issues
+            );
+        }
+        Command::Data(DataCmd::Export { output }) => {
+            let data = serde_json::to_string_pretty(&app.export_data().await?)?;
+            match output {
+                Some(path) => {
+                    std::fs::write(&path, data)?;
+                    println!("exported to {}", path.display());
+                }
+                None => println!("{data}"),
             }
         }
     }

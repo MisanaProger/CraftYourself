@@ -22,6 +22,9 @@ est-workspace = { path = "crates/est-workspace" }
 est-languages = { path = "crates/est-languages" }
 est-ai-policy = { path = "crates/est-ai-policy" }
 est-documentation = { path = "crates/est-documentation" }
+est-ai = { path = "crates/est-ai" }
+est-dependency = { path = "crates/est-dependency" }
+est-discipline = { path = "crates/est-discipline" }
 
 anyhow = "1"
 async-trait = "0.1"
@@ -44,4 +47,5 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4", "serde"] }

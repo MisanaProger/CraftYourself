@@ -78,6 +78,11 @@ pub trait EventLog: Send + Sync {
         session: &SessionId,
         kind: Option<&str>,
     ) -> AppResult<Vec<StoredEvent>>;
+    async fn for_conversation(
+        &self,
+        conversation: &est_core::ConversationId,
+        kind: Option<&str>,
+    ) -> AppResult<Vec<StoredEvent>>;
 }
 
 /// Pushes events to live clients (WebSocket). Best effort.
@@ -166,4 +171,104 @@ pub trait WorkspaceLayout: Send + Sync {
 pub trait IdeLauncher: Send + Sync {
     /// Opens `path` in the learner's editor. Returns the command used.
     fn open(&self, path: &Path) -> AppResult<String>;
+}
+
+// ---- conversations and engagement ------------------------------------------
+
+use est_core::{ConversationId, EscalationId, MessageId};
+use est_domain::{Card, Conversation, EngagementState, Escalation, Message};
+
+#[async_trait]
+pub trait ConversationRepository: Send + Sync {
+    async fn create(&self, conversation: &Conversation) -> AppResult<()>;
+    async fn get(&self, id: &ConversationId) -> AppResult<Option<Conversation>>;
+    async fn list(&self) -> AppResult<Vec<Conversation>>;
+    async fn for_task(&self, task: &TaskId) -> AppResult<Option<Conversation>>;
+    /// Stores a message and bumps the conversation's `updated_at`, atomically.
+    async fn append(&self, message: &Message) -> AppResult<()>;
+    async fn message(&self, id: &MessageId) -> AppResult<Option<Message>>;
+    /// Messages in chronological order; `limit` takes the most recent ones.
+    async fn messages(&self, id: &ConversationId, limit: Option<usize>) -> AppResult<Vec<Message>>;
+    /// Updates the structured cards of a message (e.g. escalation status).
+    async fn update_cards(&self, id: &MessageId, cards: &[Card]) -> AppResult<()>;
+    /// Deletes the conversation with its messages, escalations, engagement
+    /// state, events and the ADI of its task (v0.3 §19.3).
+    async fn delete(&self, id: &ConversationId) -> AppResult<()>;
+}
+
+#[async_trait]
+pub trait EngagementRepository: Send + Sync {
+    async fn state(&self, conversation: &ConversationId) -> AppResult<Option<EngagementState>>;
+    async fn save_state(&self, state: &EngagementState) -> AppResult<()>;
+    async fn save_escalation(&self, escalation: &Escalation) -> AppResult<()>;
+    async fn escalation(&self, id: &EscalationId) -> AppResult<Option<Escalation>>;
+    async fn escalations(&self, conversation: &ConversationId) -> AppResult<Vec<Escalation>>;
+}
+
+// ---- analytics -------------------------------------------------------------
+
+/// Final ADI of one completed Issue, stored with its scoring version.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct AdiAssessment {
+    pub task_id: TaskId,
+    pub score: u8,
+    pub scoring_version: String,
+    pub observed_features: serde_json::Value,
+    pub factors: serde_json::Value,
+    pub explanation: String,
+    pub confidence: String,
+    pub created_at: est_core::Timestamp,
+    /// Completion order, used to break timestamp ties.
+    pub sequence: i64,
+}
+
+#[async_trait]
+pub trait AdiRepository: Send + Sync {
+    /// Replaces any earlier assessment of the same task.
+    async fn save(&self, assessment: &AdiAssessment) -> AppResult<AdiAssessment>;
+    async fn list(&self) -> AppResult<Vec<AdiAssessment>>;
+}
+
+/// Everything stored about the user, for export (v0.3 §20).
+#[async_trait]
+pub trait DataExporter: Send + Sync {
+    async fn export_all(&self) -> AppResult<serde_json::Value>;
+}
+
+// ---- AI Gateway ------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ChatMessage {
+    /// `user` or `assistant`.
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LlmRequest {
+    pub system: String,
+    pub messages: Vec<ChatMessage>,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct LlmResponse {
+    pub content: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderInfo {
+    pub name: String,
+    pub model: String,
+    pub endpoint: String,
+    /// Data leaves this machine.
+    pub remote: bool,
+}
+
+#[async_trait]
+pub trait LlmProvider: Send + Sync {
+    fn info(&self) -> ProviderInfo;
+    async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse>;
 }

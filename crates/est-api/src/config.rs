@@ -4,6 +4,8 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+use est_ai::ProviderConfig;
+use est_dependency::DecayParams;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -17,6 +19,11 @@ pub struct Config {
     pub frontend_dir: Option<PathBuf>,
     /// Extra Host header values accepted by the API (for non-loopback binds).
     pub allowed_hosts: Vec<String>,
+    /// AI Gateway provider (`[llm]`); without it the mentor applies the
+    /// policy but cannot generate answers.
+    pub llm: Option<ProviderConfig>,
+    /// ADI double-decay parameters (`[adi]`).
+    pub adi: Option<DecayParams>,
 }
 
 impl Default for Config {
@@ -26,6 +33,8 @@ impl Default for Config {
             editor: None,
             frontend_dir: None,
             allowed_hosts: Vec::new(),
+            llm: None,
+            adi: None,
         }
     }
 }
@@ -79,6 +88,20 @@ bind = "127.0.0.1:7878"
 
 # Built React frontend served by the daemon.
 # frontend_dir = "/path/to/Engineer-Craft/frontend/dist"
+
+# AI Gateway: any OpenAI-compatible endpoint. Local Ollama:
+# [llm]
+# base_url = "http://127.0.0.1:11434/v1"
+# model = "qwen2.5-coder:7b"
+# A remote provider must use https; the key is read from an environment
+# variable and never stored here:
+# api_key_env = "CRAFT_LLM_API_KEY"
+
+# ADI double decay (preliminary MVP values).
+# [adi]
+# half_life_days = 30.0
+# half_life_issues = 10.0
+# min_issues_for_status = 5
 "#;
 }
 
@@ -91,6 +114,16 @@ mod tests {
         let cfg: Config = toml::from_str(Config::TEMPLATE).unwrap();
         assert_eq!(cfg.bind.port(), 7878);
         assert!(cfg.allowed_hosts().contains(&"localhost:7878".to_owned()));
+    }
+
+    #[test]
+    fn parses_llm_and_adi() {
+        let cfg: Config = toml::from_str(
+            "[llm]\nbase_url = \"http://127.0.0.1:11434/v1\"\nmodel = \"m\"\n[adi]\nhalf_life_days = 7.0\nhalf_life_issues = 3.0\nmin_issues_for_status = 2\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.llm.unwrap().model, "m");
+        assert_eq!(cfg.adi.unwrap().half_life_days, 7.0);
     }
 
     #[test]

@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 
 use crate::runtime::Runtime;
 
+mod analytics;
+mod conversations;
 mod projects;
 mod sessions;
 mod tasks;
@@ -23,6 +25,8 @@ pub fn api() -> Router<Runtime> {
         .route("/tasks", get(tasks::list).post(tasks::create))
         .route("/tasks/{id}", get(tasks::get))
         .route("/tasks/{id}/start", post(tasks::start))
+        .route("/tasks/{id}/complete", post(tasks::complete))
+        .route("/tasks/{id}/conversation", get(tasks::conversation))
         .route("/exercises/import", post(tasks::import_exercise))
         .route("/sessions", get(sessions::list))
         .route("/sessions/{id}", get(sessions::get))
@@ -33,11 +37,36 @@ pub fn api() -> Router<Runtime> {
             "/sessions/{id}/workspace/open",
             post(sessions::open_workspace),
         )
-        .route("/sessions/{id}/mentor/ask", post(sessions::mentor_ask))
         .route(
-            "/sessions/{id}/mentor/history",
-            get(sessions::mentor_history),
+            "/conversations",
+            get(conversations::list).post(conversations::create),
         )
+        .route(
+            "/conversations/{id}",
+            get(conversations::get).delete(conversations::delete),
+        )
+        .route(
+            "/conversations/{id}/messages",
+            get(conversations::messages).post(conversations::post_message),
+        )
+        .route(
+            "/conversations/{id}/engagement",
+            get(conversations::engagement),
+        )
+        .route(
+            "/engagement/escalations/{id}/accept",
+            post(conversations::accept),
+        )
+        .route(
+            "/engagement/escalations/{id}/reject",
+            post(conversations::reject),
+        )
+        .route("/analytics/adi", get(analytics::adi))
+        .route("/analytics/adi/history", get(analytics::adi_history))
+        .route("/analytics/disciplines", get(analytics::disciplines))
+        .route("/analytics/skills", get(analytics::skills))
+        .route("/data/export", post(analytics::export))
+        .route("/settings/privacy", get(analytics::privacy))
 }
 
 async fn health(State(rt): State<Runtime>) -> Json<Value> {

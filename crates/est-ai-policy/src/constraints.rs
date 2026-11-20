@@ -1,7 +1,7 @@
 //! Limits on what a mentor answer may contain (architecture v0.2, §8.3:
 //! "возможность генерации кода", "объём раскрываемого решения").
 
-use est_domain::HelpLevel;
+use est_domain::EngagementLevel;
 use serde::Serialize;
 
 use crate::QueryKind;
@@ -24,17 +24,18 @@ pub struct ResponseConstraints {
     pub code: CodeAllowance,
     /// Upper bound on lines of code in the answer; `None` = unlimited.
     pub max_code_lines: Option<u32>,
-    /// The answer may only ask questions back (level 1).
+    /// The answer may only ask questions back (L0, Socratic).
     pub questions_only: bool,
 }
 
 impl ResponseConstraints {
-    pub fn for_request(kind: &QueryKind, level: HelpLevel) -> Self {
+    pub fn for_request(kind: &QueryKind, level: EngagementLevel) -> Self {
+        use EngagementLevel::*;
         let (mut code, mut max_code_lines) = match level {
-            HelpLevel::None | HelpLevel::GuidingQuestions => (CodeAllowance::None, Some(0)),
-            HelpLevel::ConceptualHints => (CodeAllowance::Illustrative, Some(15)),
-            HelpLevel::PartialExample => (CodeAllowance::PartialSolution, Some(30)),
-            HelpLevel::DetailedWalkthrough => (CodeAllowance::FullWalkthrough, None),
+            Socratic | Hinting => (CodeAllowance::None, Some(0)),
+            Explaining => (CodeAllowance::Illustrative, Some(15)),
+            Demonstration => (CodeAllowance::PartialSolution, Some(30)),
+            Active => (CodeAllowance::FullWalkthrough, None),
         };
         // Domain concepts may always be illustrated, independent of the task.
         if *kind == QueryKind::Conceptual && code == CodeAllowance::None {
@@ -44,7 +45,7 @@ impl ResponseConstraints {
         Self {
             code,
             max_code_lines,
-            questions_only: level == HelpLevel::GuidingQuestions && *kind == QueryKind::Mentoring,
+            questions_only: level == Socratic && *kind == QueryKind::Mentoring,
         }
     }
 }
@@ -84,22 +85,23 @@ mod tests {
     #[test]
     fn levels_map_to_code_allowance() {
         let m = QueryKind::Mentoring;
-        let c = ResponseConstraints::for_request(&m, HelpLevel::GuidingQuestions);
+        let c = ResponseConstraints::for_request(&m, EngagementLevel::Socratic);
         assert_eq!(c.code, CodeAllowance::None);
         assert!(c.questions_only);
+        assert!(!ResponseConstraints::for_request(&m, EngagementLevel::Hinting).questions_only);
         assert_eq!(
-            ResponseConstraints::for_request(&m, HelpLevel::PartialExample).code,
+            ResponseConstraints::for_request(&m, EngagementLevel::Demonstration).code,
             CodeAllowance::PartialSolution
         );
-        let concept = ResponseConstraints::for_request(&QueryKind::Conceptual, HelpLevel::None);
+        let concept =
+            ResponseConstraints::for_request(&QueryKind::Conceptual, EngagementLevel::Socratic);
         assert_eq!(concept.code, CodeAllowance::Illustrative);
         assert!(!concept.questions_only);
     }
 
     #[test]
     fn checks_answers() {
-        let c =
-            ResponseConstraints::for_request(&QueryKind::Mentoring, HelpLevel::GuidingQuestions);
+        let c = ResponseConstraints::for_request(&QueryKind::Mentoring, EngagementLevel::Hinting);
         assert!(c.check_answer("What happens to the last element?").is_ok());
         assert!(c.check_answer("Try:\n```rust\nlet x = 1;\n```").is_err());
         assert_eq!(fenced_code_lines("```\na\n\nb\n```\ntext\n```\nc\n```"), 3);

@@ -20,7 +20,7 @@ learning_goals = [
     "Express a property of a function as a test",
     "Run a single crate's tests with cargo",
 ]
-skills = ["code-reading", "testing", "documentation-literacy"]
+disciplines = ["debugging-testing"]
 
 [source]
 repository = "https://github.com/BurntSushi/ripgrep"
@@ -56,8 +56,7 @@ kind = "commits"
 description = "One focused commit with an imperative subject line that explains what is tested"
 
 [mentor]
-max_help_level = 3
-min_attempts_before_solution = 2
+max_level = 3
 
 [[docs]]
 title = "globset crate documentation"

@@ -1,20 +1,20 @@
 //! Domain layer: models and business rules.
 //!
-//! This crate must not depend on storage, HTTP, Git or any AI provider
-//! (architecture v0.2, §4).
+//! This crate must not depend on storage, HTTP, Git, containers or any AI
+//! provider (architecture v0.3, §4.1).
 
-mod help;
+mod conversation;
+mod engagement;
 mod language;
 mod project;
 mod session;
-mod skill;
 mod task;
 
-pub use help::HelpLevel;
+pub use conversation::{Card, Conversation, ConversationStatus, Message, MessageRole, SourceLink};
+pub use engagement::{EngagementLevel, EngagementState, Escalation, EscalationStatus};
 pub use language::{CommandKind, CommandSpec, LanguageDetection};
 pub use project::{NewProject, Project};
 pub use session::{LearningSession, SessionOutcome, SessionStatus};
-pub use skill::Skill;
 pub use task::{
     Difficulty, DocReference, MentorSettings, NewTask, Task, TaskSource, TaskStatus, TaskType,
 };

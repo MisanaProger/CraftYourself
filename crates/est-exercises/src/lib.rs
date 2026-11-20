@@ -12,7 +12,7 @@ use std::collections::HashSet;
 
 use est_core::{ProjectId, is_slug};
 use est_domain::{
-    Difficulty, DocReference, HelpLevel, MentorSettings, NewTask, Skill, TaskSource, TaskType,
+    Difficulty, DocReference, EngagementLevel, MentorSettings, NewTask, TaskSource, TaskType,
 };
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -53,7 +53,8 @@ pub struct ExerciseInfo {
     #[serde(default)]
     pub learning_goals: Vec<String>,
     #[serde(default)]
-    pub skills: Vec<Skill>,
+    /// Discipline ids from the Engineering Skill Matrix catalog.
+    pub disciplines: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,32 +130,24 @@ fn default_weight() -> u32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MentorLimits {
-    /// Highest help level the mentor may reach in this exercise.
+    /// Highest engagement level reachable by escalation (default L4).
+    /// Every Issue still starts at L0.
     #[serde(default = "default_max_level")]
-    pub max_help_level: HelpLevel,
-    /// Number of own attempts (commits) required before help levels that
-    /// reveal part of the solution (3 and 4) unlock.
-    #[serde(default = "default_min_attempts")]
-    pub min_attempts_before_solution: u32,
+    pub max_level: EngagementLevel,
     /// Paths (globs, relative to the repository root) the mentor must never read,
     /// e.g. hidden reference tests.
     #[serde(default)]
     pub denied_paths: Vec<String>,
 }
 
-fn default_max_level() -> HelpLevel {
-    HelpLevel::ConceptualHints
-}
-
-fn default_min_attempts() -> u32 {
-    2
+fn default_max_level() -> EngagementLevel {
+    EngagementLevel::Active
 }
 
 impl Default for MentorLimits {
     fn default() -> Self {
         Self {
-            max_help_level: default_max_level(),
-            min_attempts_before_solution: default_min_attempts(),
+            max_level: default_max_level(),
             denied_paths: Vec::new(),
         }
     }
@@ -239,6 +232,12 @@ impl ExerciseManifest {
         }
         if ex.learning_goals.is_empty() {
             errors.push("exercise.learning_goals must list at least one goal".into());
+        }
+
+        for d in &ex.disciplines {
+            if !est_discipline::is_known_discipline(d) {
+                errors.push(format!("exercise.disciplines: unknown discipline `{d}`"));
+            }
         }
 
         let src = &self.source;
@@ -351,12 +350,11 @@ impl ExerciseManifest {
                 version: ex.version.clone(),
             },
             learning_goals: ex.learning_goals.clone(),
-            skills: ex.skills.clone(),
+            disciplines: ex.disciplines.clone(),
             base_revision: Some(self.source.revision.clone()),
             test_command: Some(self.commands.test.clone()),
             mentor: Some(MentorSettings {
-                max_help_level: self.mentor.max_help_level,
-                min_attempts_before_solution: self.mentor.min_attempts_before_solution,
+                max_level: self.mentor.max_level,
                 denied_paths: self.mentor.denied_paths.clone(),
             }),
             docs: self
@@ -393,7 +391,7 @@ description = "The parser drops the last element of an inclusive range."
 task_type = "bug-fix"
 difficulty = "beginner"
 learning_goals = ["Reproduce a bug with a failing test", "Read unfamiliar parsing code"]
-skills = ["debugging", "testing"]
+disciplines = ["debugging-testing"]
 
 [source]
 repository = "https://github.com/example/ranges"
@@ -418,7 +416,7 @@ kind = "manual"
 description = "A regression test covering the bug was added"
 
 [mentor]
-max_help_level = 3
+max_level = 3
 denied_paths = ["tests/hidden/**"]
 
 [[docs]]
@@ -431,8 +429,7 @@ topics = ["RangeInclusive", "..="]
     fn parses_valid_manifest() {
         let m = ExerciseManifest::from_toml(VALID).unwrap();
         assert_eq!(m.exercise.id, "fix-off-by-one");
-        assert_eq!(m.mentor.max_help_level, HelpLevel::PartialExample);
-        assert_eq!(m.mentor.min_attempts_before_solution, 2);
+        assert_eq!(m.mentor.max_level, EngagementLevel::Demonstration);
         assert_eq!(m.criteria[1].weight, 1);
         assert_eq!(m.exercise.task_type, TaskType::BugFix);
     }
@@ -478,8 +475,8 @@ topics = ["RangeInclusive", "..="]
             .replace("0123456789abcdef0123456789abcdef01234567", "main")
             .replace("id = \"fix-off-by-one\"", "id = \"Fix Off By One\"")
             .replace(
-                "max_help_level = 3",
-                "max_help_level = 3\nmin_attempts_before_solution = 1",
+                "disciplines = [\"debugging-testing\"]",
+                "disciplines = [\"magic\"]",
             )
             .replace("tests/hidden/**", "../outside");
         let Err(ManifestError::Invalid(errors)) = ExerciseManifest::from_toml(&text) else {
@@ -488,6 +485,11 @@ topics = ["RangeInclusive", "..="]
         assert!(errors.iter().any(|e| e.contains("exercise.id")));
         assert!(errors.iter().any(|e| e.contains("source.revision")));
         assert!(errors.iter().any(|e| e.contains("denied_paths")));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("unknown discipline `magic`"))
+        );
     }
 
     #[test]
@@ -501,7 +503,7 @@ topics = ["RangeInclusive", "..="]
 
     #[test]
     fn rejects_invalid_help_level() {
-        let text = VALID.replace("max_help_level = 3", "max_help_level = 7");
+        let text = VALID.replace("max_level = 3", "max_level = 7");
         assert!(ExerciseManifest::from_toml(&text).is_err());
     }
 }

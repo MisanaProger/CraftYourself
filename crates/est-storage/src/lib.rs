@@ -8,14 +8,19 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use est_application::ports::{
+    AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
     EventLog, ProjectRepository, SessionRepository, StoredEvent, TaskRepository, User,
     UserRepository,
 };
 use est_application::{AppError, AppResult};
-use est_core::{DomainEvent, ProjectId, SessionId, TaskId, Timestamp, UserId};
+use est_core::{
+    ConversationId, DomainEvent, EscalationId, MessageId, ProjectId, SessionId, TaskId, Timestamp,
+    UserId,
+};
 use est_domain::{
-    LanguageDetection, LearningSession, NewProject, NewTask, Project, SessionStatus, Task,
-    TaskSource, TaskStatus,
+    Card, Conversation, EngagementLevel, EngagementState, Escalation, LanguageDetection,
+    LearningSession, Message, NewProject, NewTask, Project, SessionStatus, Task, TaskSource,
+    TaskStatus,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -154,7 +159,8 @@ fn task_from_row(r: &SqliteRow) -> AppResult<Task> {
         source: from_json("task source", r.get("source"))?,
         status: parse_enum("task status", r.get("status"))?,
         learning_goals: from_json("learning goals", r.get("learning_goals"))?,
-        skills: from_json("skills", r.get("skills"))?,
+        // Column `skills` holds the task's ESM discipline ids.
+        disciplines: from_json("disciplines", r.get("skills"))?,
         base_revision: r.get("base_revision"),
         test_command: r.get("test_command"),
         mentor: from_json("mentor settings", r.get("mentor"))?,
@@ -170,6 +176,9 @@ fn session_from_row(r: &SqliteRow) -> AppResult<LearningSession> {
         user_id: UserId::from(r.get::<String, _>("user_id")),
         project_id: ProjectId::from(r.get::<String, _>("project_id")),
         task_id: TaskId::from(r.get::<String, _>("task_id")),
+        conversation_id: r
+            .get::<Option<String>, _>("conversation_id")
+            .map(ConversationId::from),
         workspace_path: r.get::<String, _>("workspace_path").into(),
         branch: r.get("branch"),
         base_revision: r.get("base_revision"),
@@ -301,7 +310,7 @@ impl TaskRepository for SqliteStore {
         .bind(exercise_id)
         .bind(exercise_version)
         .bind(to_json(&t.learning_goals))
-        .bind(to_json(&t.skills))
+        .bind(to_json(&t.disciplines))
         .bind(&t.base_revision)
         .bind(&t.test_command)
         .bind(to_json(&t.mentor.clone().unwrap_or_default()))
@@ -383,7 +392,7 @@ impl SessionRepository for SqliteStore {
     async fn create(&self, s: &LearningSession) -> AppResult<()> {
         sqlx::query(
             "INSERT INTO learning_sessions (id, user_id, project_id, task_id, workspace_path, branch, \
-             base_revision, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             base_revision, status, started_at, finished_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(s.id.as_str())
         .bind(s.user_id.as_str())
@@ -395,6 +404,7 @@ impl SessionRepository for SqliteStore {
         .bind(s.status.as_str())
         .bind(s.started_at)
         .bind(s.finished_at)
+        .bind(s.conversation_id.as_ref().map(ConversationId::as_str))
         .execute(&self.pool)
         .await
         .map_err(db)?;
@@ -470,12 +480,14 @@ impl SessionRepository for SqliteStore {
 impl EventLog for SqliteStore {
     async fn append(&self, e: &DomainEvent) -> AppResult<i64> {
         Ok(sqlx::query(
-            "INSERT INTO session_events (kind, session_id, project_id, task_id, payload, at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO session_events (kind, session_id, project_id, task_id, conversation_id, payload, at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&e.kind)
         .bind(e.session_id.as_ref().map(SessionId::as_str))
         .bind(e.project_id.as_ref().map(ProjectId::as_str))
         .bind(e.task_id.as_ref().map(TaskId::as_str))
+        .bind(e.conversation_id.as_ref().map(ConversationId::as_str))
         .bind(e.payload.to_string())
         .bind(e.at)
         .execute(&self.pool)
@@ -489,40 +501,437 @@ impl EventLog for SqliteStore {
         session: &SessionId,
         kind: Option<&str>,
     ) -> AppResult<Vec<StoredEvent>> {
-        let rows = sqlx::query(
-            "SELECT * FROM session_events WHERE session_id = ?1 AND (?2 IS NULL OR kind = ?2) ORDER BY id",
+        self.events_where("session_id", session.as_str(), kind)
+            .await
+    }
+
+    async fn for_conversation(
+        &self,
+        conversation: &ConversationId,
+        kind: Option<&str>,
+    ) -> AppResult<Vec<StoredEvent>> {
+        self.events_where("conversation_id", conversation.as_str(), kind)
+            .await
+    }
+}
+
+fn event_from_row(r: &SqliteRow) -> AppResult<StoredEvent> {
+    Ok(StoredEvent {
+        id: r.get("id"),
+        event: DomainEvent {
+            kind: r.get("kind"),
+            session_id: r
+                .get::<Option<String>, _>("session_id")
+                .map(SessionId::from),
+            project_id: r
+                .get::<Option<String>, _>("project_id")
+                .map(ProjectId::from),
+            task_id: r.get::<Option<String>, _>("task_id").map(TaskId::from),
+            conversation_id: r
+                .get::<Option<String>, _>("conversation_id")
+                .map(ConversationId::from),
+            payload: from_json("event payload", r.get("payload"))?,
+            at: r.get::<Timestamp, _>("at"),
+        },
+    })
+}
+
+impl SqliteStore {
+    async fn events_where(
+        &self,
+        column: &str,
+        value: &str,
+        kind: Option<&str>,
+    ) -> AppResult<Vec<StoredEvent>> {
+        let sql = format!(
+            "SELECT * FROM session_events WHERE {column} = ?1 AND (?2 IS NULL OR kind = ?2) ORDER BY id"
+        );
+        sqlx::query(&sql)
+            .bind(value)
+            .bind(kind)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(event_from_row)
+            .collect()
+    }
+}
+
+// ---- conversations ---------------------------------------------------------
+
+fn level_from(what: &str, v: i64) -> AppResult<EngagementLevel> {
+    EngagementLevel::try_from(u8::try_from(v).unwrap_or(u8::MAX)).map_err(|e| corrupt(what, e))
+}
+
+fn conversation_from_row(r: &SqliteRow) -> AppResult<Conversation> {
+    Ok(Conversation {
+        id: ConversationId::from(r.get::<String, _>("id")),
+        project_id: r
+            .get::<Option<String>, _>("project_id")
+            .map(ProjectId::from),
+        task_id: r.get::<Option<String>, _>("task_id").map(TaskId::from),
+        title: r.get("title"),
+        status: parse_enum("conversation status", r.get("status"))?,
+        created_at: r.get("created_at"),
+        updated_at: r.get("updated_at"),
+    })
+}
+
+fn message_from_row(r: &SqliteRow) -> AppResult<Message> {
+    Ok(Message {
+        id: MessageId::from(r.get::<String, _>("id")),
+        conversation_id: ConversationId::from(r.get::<String, _>("conversation_id")),
+        role: parse_enum("message role", r.get("role"))?,
+        content: r.get("content"),
+        cards: from_json("message cards", r.get("cards"))?,
+        level: level_from("message level", r.get("level"))?,
+        meta: from_json("message meta", r.get("meta"))?,
+        created_at: r.get("created_at"),
+    })
+}
+
+#[async_trait]
+impl ConversationRepository for SqliteStore {
+    async fn create(&self, c: &Conversation) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO conversations (id, project_id, task_id, title, status, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(session.as_str())
-        .bind(kind)
-        .fetch_all(&self.pool)
+        .bind(c.id.as_str())
+        .bind(c.project_id.as_ref().map(ProjectId::as_str))
+        .bind(c.task_id.as_ref().map(TaskId::as_str))
+        .bind(&c.title)
+        .bind(enum_str(&c.status))
+        .bind(c.created_at)
+        .bind(c.updated_at)
+        .execute(&self.pool)
         .await
         .map_err(db)?;
-        rows.iter()
-            .map(|r| {
-                Ok(StoredEvent {
-                    id: r.get("id"),
-                    event: DomainEvent {
-                        kind: r.get("kind"),
-                        session_id: r
-                            .get::<Option<String>, _>("session_id")
-                            .map(SessionId::from),
-                        project_id: r
-                            .get::<Option<String>, _>("project_id")
-                            .map(ProjectId::from),
-                        task_id: r.get::<Option<String>, _>("task_id").map(TaskId::from),
-                        payload: from_json("event payload", r.get("payload"))?,
-                        at: r.get::<Timestamp, _>("at"),
-                    },
-                })
-            })
+        Ok(())
+    }
+
+    async fn get(&self, id: &ConversationId) -> AppResult<Option<Conversation>> {
+        sqlx::query("SELECT * FROM conversations WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(conversation_from_row)
+            .transpose()
+    }
+
+    async fn list(&self) -> AppResult<Vec<Conversation>> {
+        sqlx::query("SELECT * FROM conversations ORDER BY updated_at DESC")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(conversation_from_row)
             .collect()
+    }
+
+    async fn for_task(&self, task: &TaskId) -> AppResult<Option<Conversation>> {
+        sqlx::query("SELECT * FROM conversations WHERE task_id = ?")
+            .bind(task.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(conversation_from_row)
+            .transpose()
+    }
+
+    async fn append(&self, m: &Message) -> AppResult<()> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        sqlx::query(
+            "INSERT INTO conversation_messages (id, conversation_id, role, content, cards, level, meta, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(m.id.as_str())
+        .bind(m.conversation_id.as_str())
+        .bind(enum_str(&m.role))
+        .bind(&m.content)
+        .bind(to_json(&m.cards))
+        .bind(i64::from(m.level.as_u8()))
+        .bind(m.meta.to_string())
+        .bind(m.created_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?")
+            .bind(m.created_at)
+            .bind(m.conversation_id.as_str())
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)
+    }
+
+    async fn message(&self, id: &MessageId) -> AppResult<Option<Message>> {
+        sqlx::query("SELECT * FROM conversation_messages WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(message_from_row)
+            .transpose()
+    }
+
+    async fn messages(&self, id: &ConversationId, limit: Option<usize>) -> AppResult<Vec<Message>> {
+        let limit = limit.map(|l| l as i64).unwrap_or(-1);
+        let mut out: Vec<Message> = sqlx::query(
+            "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY seq DESC LIMIT ?",
+        )
+        .bind(id.as_str())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(message_from_row)
+        .collect::<AppResult<_>>()?;
+        out.reverse();
+        Ok(out)
+    }
+
+    async fn update_cards(&self, id: &MessageId, cards: &[Card]) -> AppResult<()> {
+        sqlx::query("UPDATE conversation_messages SET cards = ? WHERE id = ?")
+            .bind(to_json(&cards))
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(db)?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: &ConversationId) -> AppResult<()> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        let task: Option<Option<String>> =
+            sqlx::query_scalar("SELECT task_id FROM conversations WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        let Some(task) = task else {
+            return Err(AppError::NotFound("conversation".into()));
+        };
+        if let Some(task) = task {
+            sqlx::query("DELETE FROM adi_assessments WHERE task_id = ?")
+                .bind(&task)
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
+        for sql in [
+            "DELETE FROM session_events WHERE conversation_id = ?",
+            "UPDATE learning_sessions SET conversation_id = NULL WHERE conversation_id = ?",
+            "DELETE FROM conversations WHERE id = ?",
+        ] {
+            sqlx::query(sql)
+                .bind(id.as_str())
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
+        tx.commit().await.map_err(db)
+    }
+}
+
+// ---- engagement ------------------------------------------------------------
+
+fn escalation_from_row(r: &SqliteRow) -> AppResult<Escalation> {
+    Ok(Escalation {
+        id: EscalationId::from(r.get::<String, _>("id")),
+        conversation_id: ConversationId::from(r.get::<String, _>("conversation_id")),
+        from: level_from("escalation", r.get("from_level"))?,
+        to: level_from("escalation", r.get("to_level"))?,
+        required: level_from("escalation", r.get("required_level"))?,
+        message_id: MessageId::from(r.get::<String, _>("message_id")),
+        status: parse_enum("escalation status", r.get("status"))?,
+        created_at: r.get("created_at"),
+        resolved_at: r.get("resolved_at"),
+    })
+}
+
+#[async_trait]
+impl EngagementRepository for SqliteStore {
+    async fn state(&self, conversation: &ConversationId) -> AppResult<Option<EngagementState>> {
+        let Some(r) = sqlx::query("SELECT * FROM engagement_states WHERE conversation_id = ?")
+            .bind(conversation.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(EngagementState {
+            conversation_id: conversation.clone(),
+            level: level_from("engagement level", r.get("level"))?,
+            max_level: level_from("engagement max level", r.get("max_level"))?,
+            updated_at: r.get("updated_at"),
+        }))
+    }
+
+    async fn save_state(&self, s: &EngagementState) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO engagement_states (conversation_id, level, max_level, updated_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(conversation_id) DO UPDATE SET level = excluded.level, \
+             max_level = excluded.max_level, updated_at = excluded.updated_at",
+        )
+        .bind(s.conversation_id.as_str())
+        .bind(i64::from(s.level.as_u8()))
+        .bind(i64::from(s.max_level.as_u8()))
+        .bind(s.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn save_escalation(&self, e: &Escalation) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO engagement_escalations (id, conversation_id, from_level, to_level, required_level, \
+             message_id, status, created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(id) DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at",
+        )
+        .bind(e.id.as_str())
+        .bind(e.conversation_id.as_str())
+        .bind(i64::from(e.from.as_u8()))
+        .bind(i64::from(e.to.as_u8()))
+        .bind(i64::from(e.required.as_u8()))
+        .bind(e.message_id.as_str())
+        .bind(enum_str(&e.status))
+        .bind(e.created_at)
+        .bind(e.resolved_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn escalation(&self, id: &EscalationId) -> AppResult<Option<Escalation>> {
+        sqlx::query("SELECT * FROM engagement_escalations WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(escalation_from_row)
+            .transpose()
+    }
+
+    async fn escalations(&self, conversation: &ConversationId) -> AppResult<Vec<Escalation>> {
+        sqlx::query(
+            "SELECT * FROM engagement_escalations WHERE conversation_id = ? ORDER BY created_at, rowid",
+        )
+        .bind(conversation.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(escalation_from_row)
+        .collect()
+    }
+}
+
+// ---- ADI -------------------------------------------------------------------
+
+fn adi_from_row(r: &SqliteRow) -> AppResult<AdiAssessment> {
+    Ok(AdiAssessment {
+        task_id: TaskId::from(r.get::<String, _>("task_id")),
+        score: u8::try_from(r.get::<i64, _>("score")).map_err(|e| corrupt("ADI score", e))?,
+        scoring_version: r.get("scoring_version"),
+        observed_features: from_json("ADI features", r.get("observed_features"))?,
+        factors: from_json("ADI factors", r.get("factors"))?,
+        explanation: r.get("explanation"),
+        confidence: r.get("confidence"),
+        created_at: r.get("created_at"),
+        sequence: r.get("sequence"),
+    })
+}
+
+#[async_trait]
+impl AdiRepository for SqliteStore {
+    async fn save(&self, a: &AdiAssessment) -> AppResult<AdiAssessment> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        // A re-completed task gets a fresh assessment at the end of the order.
+        sqlx::query("DELETE FROM adi_assessments WHERE task_id = ?")
+            .bind(a.task_id.as_str())
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        let row = sqlx::query(
+            "INSERT INTO adi_assessments (task_id, score, scoring_version, observed_features, factors, \
+             explanation, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+        )
+        .bind(a.task_id.as_str())
+        .bind(i64::from(a.score))
+        .bind(&a.scoring_version)
+        .bind(a.observed_features.to_string())
+        .bind(a.factors.to_string())
+        .bind(&a.explanation)
+        .bind(&a.confidence)
+        .bind(a.created_at)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        let saved = adi_from_row(&row)?;
+        tx.commit().await.map_err(db)?;
+        Ok(saved)
+    }
+
+    async fn list(&self) -> AppResult<Vec<AdiAssessment>> {
+        sqlx::query("SELECT * FROM adi_assessments ORDER BY sequence")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(adi_from_row)
+            .collect()
+    }
+}
+
+// ---- export ----------------------------------------------------------------
+
+#[async_trait]
+impl DataExporter for SqliteStore {
+    async fn export_all(&self) -> AppResult<serde_json::Value> {
+        let user = self.local_user().await?;
+        let mut conversations = Vec::new();
+        for c in ConversationRepository::list(self).await? {
+            conversations.push(serde_json::json!({
+                "engagement": self.state(&c.id).await?,
+                "escalations": self.escalations(&c.id).await?,
+                "messages": self.messages(&c.id, None).await?,
+                "conversation": c,
+            }));
+        }
+        let events: Vec<StoredEvent> = sqlx::query("SELECT * FROM session_events ORDER BY id")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(event_from_row)
+            .collect::<AppResult<_>>()?;
+        Ok(serde_json::json!({
+            "user": user,
+            "projects": ProjectRepository::list(self).await?,
+            "tasks": TaskRepository::list(self, None).await?,
+            "sessions": SessionRepository::list(self, &user.id).await?,
+            "conversations": conversations,
+            "events": events,
+            "adi_assessments": AdiRepository::list(self).await?,
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use est_domain::{Difficulty, HelpLevel, MentorSettings, TaskType};
+    use est_domain::{Difficulty, MentorSettings, TaskType};
     use serde_json::json;
 
     async fn seeded() -> (SqliteStore, Project, Task, User) {
@@ -564,11 +973,11 @@ mod tests {
                     version: "1.0.0".into(),
                 },
                 learning_goals: vec!["goal".into()],
-                skills: vec![est_domain::Skill::Debugging],
+                disciplines: vec!["debugging-testing".into()],
                 base_revision: None,
                 test_command: Some("cargo test".into()),
                 mentor: Some(MentorSettings {
-                    max_help_level: HelpLevel::ConceptualHints,
+                    max_level: EngagementLevel::Explaining,
                     ..Default::default()
                 }),
                 docs: vec![],
@@ -585,6 +994,7 @@ mod tests {
             user_id: user.id.clone(),
             project_id: p.id.clone(),
             task_id: t.id.clone(),
+            conversation_id: None,
             workspace_path: ws.into(),
             branch: "est/x".into(),
             base_revision: "a".repeat(40),
@@ -620,7 +1030,7 @@ mod tests {
     async fn tasks_roundtrip() {
         let (s, p, t, _) = seeded().await;
         assert_eq!(t.status, TaskStatus::Open);
-        assert_eq!(t.mentor.max_help_level, HelpLevel::ConceptualHints);
+        assert_eq!(t.mentor.max_level, EngagementLevel::Explaining);
         assert!(
             s.find_exercise(&p.id, "fix-range", "1.0.0")
                 .await
@@ -681,18 +1091,164 @@ mod tests {
         s.update(&a).await.unwrap();
         assert!(s.active_for_task(&t.id).await.unwrap().is_none());
 
-        s.append(&DomainEvent::new("mentor.request", json!({"level": 2})).session(&a.id))
-            .await
-            .unwrap();
-        s.append(&DomainEvent::new("session.finished", json!({})).session(&a.id))
-            .await
-            .unwrap();
-        s.append(&DomainEvent::new("project.added", json!({})).project(&p.id))
-            .await
-            .unwrap();
+        EventLog::append(
+            &s,
+            &DomainEvent::new("mentor.request", json!({"level": 2})).session(&a.id),
+        )
+        .await
+        .unwrap();
+        EventLog::append(
+            &s,
+            &DomainEvent::new("session.finished", json!({})).session(&a.id),
+        )
+        .await
+        .unwrap();
+        EventLog::append(
+            &s,
+            &DomainEvent::new("project.added", json!({})).project(&p.id),
+        )
+        .await
+        .unwrap();
         assert_eq!(s.for_session(&a.id, None).await.unwrap().len(), 2);
         let m = s.for_session(&a.id, Some("mentor.request")).await.unwrap();
         assert_eq!(m.len(), 1);
         assert_eq!(m[0].event.payload["level"], 2);
+    }
+
+    #[tokio::test]
+    async fn conversations_engagement_adi_and_delete() {
+        use est_domain::{ConversationStatus, MessageRole};
+        let (s, p, t, user) = seeded().await;
+        let now = est_core::now();
+        let c = Conversation {
+            id: ConversationId::generate(),
+            project_id: Some(p.id.clone()),
+            task_id: Some(t.id.clone()),
+            title: "t".into(),
+            status: ConversationStatus::Active,
+            created_at: now,
+            updated_at: now,
+        };
+        ConversationRepository::create(&s, &c).await.unwrap();
+        assert!(
+            ConversationRepository::create(
+                &s,
+                &Conversation {
+                    id: ConversationId::generate(),
+                    ..c.clone()
+                }
+            )
+            .await
+            .is_err(),
+            "one conversation per task"
+        );
+        assert_eq!(s.for_task(&t.id).await.unwrap().unwrap().id, c.id);
+
+        let m1 = Message::new(&c.id, MessageRole::User, "first", EngagementLevel::Socratic);
+        let m2 = Message::new(
+            &c.id,
+            MessageRole::Assistant,
+            "second",
+            EngagementLevel::Socratic,
+        )
+        .with_card(Card::PolicyNotice { text: "x".into() });
+        ConversationRepository::append(&s, &m1).await.unwrap();
+        ConversationRepository::append(&s, &m2).await.unwrap();
+        let all = s.messages(&c.id, None).await.unwrap();
+        assert_eq!(
+            all.iter().map(|m| m.content.as_str()).collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        assert_eq!(
+            s.messages(&c.id, Some(1)).await.unwrap()[0].content,
+            "second"
+        );
+        assert_eq!(all[1].cards.len(), 1);
+        s.update_cards(&m2.id, &[]).await.unwrap();
+        assert!(s.message(&m2.id).await.unwrap().unwrap().cards.is_empty());
+
+        let mut state = EngagementState::initial(c.id.clone(), EngagementLevel::Active);
+        s.save_state(&state).await.unwrap();
+        let mut e = Escalation::propose(
+            &state,
+            EngagementLevel::Hinting,
+            EngagementLevel::Active,
+            m1.id.clone(),
+        )
+        .unwrap();
+        s.save_escalation(&e).await.unwrap();
+        e.accept(&mut state).unwrap();
+        s.save_escalation(&e).await.unwrap();
+        s.save_state(&state).await.unwrap();
+        assert_eq!(
+            s.state(&c.id).await.unwrap().unwrap().level,
+            EngagementLevel::Hinting
+        );
+        assert_eq!(
+            s.escalation(&e.id).await.unwrap().unwrap().status,
+            est_domain::EscalationStatus::Accepted
+        );
+
+        let adi = AdiAssessment {
+            task_id: t.id.clone(),
+            score: 30,
+            scoring_version: "v".into(),
+            observed_features: serde_json::json!({}),
+            factors: serde_json::json!([]),
+            explanation: "e".into(),
+            confidence: "low".into(),
+            created_at: now,
+            sequence: 0,
+        };
+        let first = AdiRepository::save(&s, &adi).await.unwrap();
+        let second = AdiRepository::save(&s, &AdiAssessment { score: 40, ..adi })
+            .await
+            .unwrap();
+        assert!(second.sequence > first.sequence);
+        assert_eq!(
+            AdiRepository::list(&s).await.unwrap().len(),
+            1,
+            "one assessment per task"
+        );
+
+        let mut session = session(&user, &p, &t, "/ws");
+        session.conversation_id = Some(c.id.clone());
+        SessionRepository::create(&s, &session).await.unwrap();
+        EventLog::append(
+            &s,
+            &DomainEvent::new("x", serde_json::json!({})).conversation(&c.id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(s.for_conversation(&c.id, None).await.unwrap().len(), 1);
+
+        let export = s.export_all().await.unwrap();
+        assert_eq!(
+            export["conversations"][0]["messages"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        ConversationRepository::delete(&s, &c.id).await.unwrap();
+        assert!(
+            ConversationRepository::get(&s, &c.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(s.message(&m1.id).await.unwrap().is_none());
+        assert!(s.state(&c.id).await.unwrap().is_none());
+        assert!(s.for_conversation(&c.id, None).await.unwrap().is_empty());
+        assert!(AdiRepository::list(&s).await.unwrap().is_empty());
+        assert_eq!(
+            SessionRepository::get(&s, &session.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .conversation_id,
+            None
+        );
     }
 }

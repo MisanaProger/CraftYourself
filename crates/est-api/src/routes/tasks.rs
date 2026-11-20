@@ -3,7 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use est_application::StartedSession;
 use est_core::{ProjectId, TaskId};
-use est_domain::{NewTask, Task};
+use est_domain::{Conversation, LearningSession, NewTask, Task};
 use serde::Deserialize;
 
 use crate::error::ApiResult;
@@ -60,4 +60,21 @@ pub async fn import_exercise(
         StatusCode::CREATED,
         Json(rt.app.import_exercise(&body.manifest).await?),
     ))
+}
+
+/// Completes the Issue: finishes its session and sets the final ADI.
+pub async fn complete(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<LearningSession>> {
+    Ok(Json(rt.app.complete_task(&TaskId::from(id)).await?))
+}
+
+/// The Issue's conversation (created on first use, starting at L0).
+pub async fn conversation(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Conversation>> {
+    let task = rt.app.get_task(&TaskId::from(id)).await?;
+    Ok(Json(rt.app.conversation_for_task(&task).await?))
 }

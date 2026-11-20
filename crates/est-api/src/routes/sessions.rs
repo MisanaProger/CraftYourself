@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use est_application::SessionOverview;
 use est_application::ports::StoredEvent;
-use est_application::{MentorAnswer, MentorAsk, SessionOverview};
 use est_core::SessionId;
 use est_domain::{LearningSession, SessionOutcome};
 use serde::Deserialize;
@@ -66,19 +66,4 @@ pub async fn open_workspace(
 ) -> ApiResult<Json<Value>> {
     let command = rt.app.open_workspace(&SessionId::from(id)).await?;
     Ok(Json(json!({ "command": command })))
-}
-
-pub async fn mentor_ask(
-    State(rt): State<Runtime>,
-    Path(id): Path<String>,
-    Json(ask): Json<MentorAsk>,
-) -> ApiResult<Json<MentorAnswer>> {
-    Ok(Json(rt.app.mentor_ask(&SessionId::from(id), ask).await?))
-}
-
-pub async fn mentor_history(
-    State(rt): State<Runtime>,
-    Path(id): Path<String>,
-) -> ApiResult<Json<Vec<StoredEvent>>> {
-    Ok(Json(rt.app.mentor_history(&SessionId::from(id)).await?))
 }

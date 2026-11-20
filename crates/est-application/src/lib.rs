@@ -5,12 +5,15 @@
 //! `est-workspace`, …) implement the ports; `est-api` and `est-cli` call
 //! the use cases. Nothing here knows about SQLite, Axum or a concrete model.
 
+mod analytics;
+mod conversation;
 mod error;
 pub mod ports;
 mod service;
 
+pub use analytics::{AdiHistoryItem, AdiOverview, PrivacySettings, SkillMatrix};
+pub use conversation::{ConversationView, NewConversation, PostMessage};
 pub use error::{AppError, AppResult};
 pub use service::{
-    AddProject, App, AppSettings, MentorAnswer, MentorAsk, Ports, SessionOverview, StartedSession,
-    name_from_source,
+    AddProject, App, AppSettings, Ports, SessionOverview, StartedSession, name_from_source,
 };

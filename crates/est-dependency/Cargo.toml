@@ -1,0 +1,11 @@
+[package]
+name = "est-dependency"
+description = "AI Dependency Index: per-Issue scoring from observed events and double-decay aggregation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true

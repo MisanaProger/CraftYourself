@@ -8,7 +8,9 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+est-ai.workspace = true
 est-application.workspace = true
+est-dependency.workspace = true
 est-core.workspace = true
 est-domain.workspace = true
 est-git.workspace = true
@@ -26,3 +28,4 @@ tracing.workspace = true
 http-body-util.workspace = true
 tempfile.workspace = true
 tower.workspace = true
+async-trait.workspace = true

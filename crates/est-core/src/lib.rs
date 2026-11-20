@@ -64,6 +64,11 @@ id_type!(
     TaskId,
     /// One attempt at a task in its own workspace.
     SessionId,
+    /// Long-lived dialogue, usually bound to one Issue.
+    ConversationId,
+    MessageId,
+    /// Proposal to raise the engagement level.
+    EscalationId,
 );
 
 /// Something that happened, recorded in the session event log and pushed to
@@ -77,6 +82,8 @@ pub struct DomainEvent {
     pub project_id: Option<ProjectId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_id: Option<TaskId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<ConversationId>,
     pub payload: serde_json::Value,
     pub at: Timestamp,
 }
@@ -88,6 +95,7 @@ impl DomainEvent {
             session_id: None,
             project_id: None,
             task_id: None,
+            conversation_id: None,
             payload,
             at: now(),
         }
@@ -107,6 +115,11 @@ impl DomainEvent {
         self.task_id = Some(id.clone());
         self
     }
+
+    pub fn conversation(mut self, id: &ConversationId) -> Self {
+        self.conversation_id = Some(id.clone());
+        self
+    }
 }
 
 /// Well-known event kinds.
@@ -117,7 +130,19 @@ pub mod events {
     pub const SESSION_RESUMED: &str = "session.resumed";
     pub const SESSION_FINISHED: &str = "session.finished";
     pub const WORKSPACE_OPENED: &str = "workspace.opened";
-    pub const MENTOR_REQUEST: &str = "mentor.request";
+    pub const TASK_COMPLETED: &str = "task.completed";
+    pub const CONVERSATION_CREATED: &str = "conversation.created";
+    pub const MESSAGE_CREATED: &str = "conversation.message.created";
+    pub const CONVERSATION_DELETED: &str = "conversation.deleted";
+    pub const DOCS_REDIRECT: &str = "documentation.redirect";
+    pub const AI_ANSWER: &str = "ai.answer";
+    pub const ENGAGEMENT_INITIALIZED: &str = "engagement.level.initialized";
+    pub const ESCALATION_PROPOSED: &str = "engagement.escalation.proposed";
+    pub const ESCALATION_ACCEPTED: &str = "engagement.escalation.accepted";
+    pub const ESCALATION_REJECTED: &str = "engagement.escalation.rejected";
+    pub const LEVEL_CHANGED: &str = "engagement.level.changed";
+    pub const ISSUE_RESET: &str = "engagement.issue.reset";
+    pub const ADI_ASSESSED: &str = "adi.assessed";
 }
 
 /// Lowercase ASCII slug: letters, digits and single dashes.

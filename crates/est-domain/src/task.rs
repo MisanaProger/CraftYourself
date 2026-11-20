@@ -1,7 +1,7 @@
 use est_core::{ProjectId, TaskId, Timestamp};
 use serde::{Deserialize, Serialize};
 
-use crate::{DomainError, HelpLevel, Skill};
+use crate::{DomainError, EngagementLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -12,6 +12,7 @@ pub enum TaskType {
     Documentation,
     Performance,
     Testing,
+    Regression,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -43,9 +44,8 @@ pub enum TaskSource {
 /// Mentor limits for one task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MentorSettings {
-    pub max_help_level: HelpLevel,
-    /// Own attempts (commits) needed before levels that reveal the solution.
-    pub min_attempts_before_solution: u32,
+    /// Highest engagement level reachable by escalation in this task.
+    pub max_level: EngagementLevel,
     /// Globs the mentor must never read, e.g. hidden reference tests.
     pub denied_paths: Vec<String>,
 }
@@ -53,8 +53,7 @@ pub struct MentorSettings {
 impl Default for MentorSettings {
     fn default() -> Self {
         Self {
-            max_help_level: HelpLevel::PartialExample,
-            min_attempts_before_solution: 2,
+            max_level: EngagementLevel::Active,
             denied_paths: Vec::new(),
         }
     }
@@ -80,7 +79,8 @@ pub struct Task {
     pub source: TaskSource,
     pub status: TaskStatus,
     pub learning_goals: Vec<String>,
-    pub skills: Vec<Skill>,
+    /// Discipline ids from the ESM catalog this task exercises.
+    pub disciplines: Vec<String>,
     /// Commit the task is pinned to; `None` = project HEAD at start time.
     pub base_revision: Option<String>,
     /// Command to run the task's tests (executed by the sandbox).
@@ -103,7 +103,7 @@ pub struct NewTask {
     #[serde(default)]
     pub learning_goals: Vec<String>,
     #[serde(default)]
-    pub skills: Vec<Skill>,
+    pub disciplines: Vec<String>,
     #[serde(default)]
     pub base_revision: Option<String>,
     #[serde(default)]

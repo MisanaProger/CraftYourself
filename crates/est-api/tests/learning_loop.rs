@@ -2,20 +2,52 @@
 //! project → task → workspace → mentor → own work in the IDE → Git → finish.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use est_api::{Config, Runtime, router};
+use est_application::AppResult;
+use est_application::ports::{LlmProvider, LlmRequest, LlmResponse, ProviderInfo};
 use est_git::{Identity, Repo};
 use est_workspace::EstHome;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
+/// Records requests; always answers with a question and a code block, so
+/// the policy's code limits can be observed.
+#[derive(Default)]
+struct FakeLlm {
+    requests: Mutex<Vec<LlmRequest>>,
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for FakeLlm {
+    fn info(&self) -> ProviderInfo {
+        ProviderInfo {
+            name: "fake".into(),
+            model: "fake-1".into(),
+            endpoint: "memory".into(),
+            remote: false,
+        }
+    }
+
+    async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse> {
+        self.requests.lock().unwrap().push(request);
+        Ok(LlmResponse {
+            content: "What happens with the last element?\n```rust\nlet a = 1;\nlet b = 2;\n```"
+                .into(),
+            model: "fake-1".into(),
+        })
+    }
+}
+
 struct Harness {
     app: Router,
     rt: Runtime,
+    llm: Arc<FakeLlm>,
     _dir: tempfile::TempDir,
     origin: PathBuf,
     revision: String,
@@ -61,12 +93,18 @@ fn make_origin(dir: &Path) -> (PathBuf, String) {
 async fn harness() -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let (origin, revision) = make_origin(dir.path());
-    let rt = Runtime::build(EstHome::new(dir.path().join(".est")), Config::default())
-        .await
-        .unwrap();
+    let llm = Arc::new(FakeLlm::default());
+    let rt = Runtime::build_with(
+        EstHome::new(dir.path().join(".est")),
+        Config::default(),
+        Some(llm.clone()),
+    )
+    .await
+    .unwrap();
     Harness {
         app: router(rt.clone(), None),
         rt,
+        llm,
         _dir: dir,
         origin,
         revision,
@@ -106,6 +144,48 @@ impl Harness {
 
     async fn post(&self, uri: &str, body: Value) -> (StatusCode, Value) {
         self.call("POST", uri, Some(body)).await
+    }
+
+    fn llm_calls(&self) -> usize {
+        self.llm.requests.lock().unwrap().len()
+    }
+
+    async fn task(&self, pid: &str, title: &str) -> String {
+        let (s, t) = self
+            .post(
+                "/api/v1/tasks",
+                json!({
+                    "project_id": pid, "title": title, "description": "Fix it.",
+                    "task_type": "bug-fix", "difficulty": "beginner", "base_revision": self.revision,
+                    "disciplines": ["debugging-testing"],
+                    "mentor": { "max_level": 4, "denied_paths": ["tests/hidden/**"] }
+                }),
+            )
+            .await;
+        assert_eq!(s, StatusCode::CREATED, "{t}");
+        t["id"].as_str().unwrap().to_owned()
+    }
+
+    /// Posts a message and returns the replies (without the user's message).
+    async fn say(&self, conv: &str, text: &str) -> Vec<Value> {
+        let (s, msgs) = self
+            .post(
+                &format!("/api/v1/conversations/{conv}/messages"),
+                json!({ "content": text }),
+            )
+            .await;
+        assert_eq!(s, StatusCode::CREATED, "{msgs}");
+        let msgs = msgs.as_array().unwrap().clone();
+        assert_eq!(msgs[0]["role"], "user");
+        msgs[1..].to_vec()
+    }
+
+    async fn level(&self, conv: &str) -> u64 {
+        self.get(&format!("/api/v1/conversations/{conv}/engagement"))
+            .await
+            .1["level"]
+            .as_u64()
+            .unwrap()
     }
 
     async fn new_project(&self) -> Value {
@@ -189,82 +269,134 @@ async fn connects_local_repository() {
 async fn full_learning_loop() {
     let h = harness().await;
     let project = h.new_project().await;
-    let pid = project["id"].as_str().unwrap();
+    let pid = project["id"].as_str().unwrap().to_owned();
+    let tid = h.task(&pid, "Include the upper bound in parse_range").await;
 
-    // Task.
-    let (s, task) = h
-        .post(
-            "/api/v1/tasks",
-            json!({
-                "project_id": pid,
-                "title": "Include the upper bound in parse_range",
-                "description": "`parse_range(\"1..3\")` must return [1, 2, 3].",
-                "task_type": "bug-fix",
-                "difficulty": "beginner",
-                "learning_goals": ["Reproduce a bug with a test"],
-                "skills": ["debugging", "testing"],
-                "base_revision": h.revision,
-                "mentor": { "max_help_level": 4, "min_attempts_before_solution": 1, "denied_paths": ["tests/hidden/**"] }
-            }),
-        )
-        .await;
-    assert_eq!(s, StatusCode::CREATED, "{task}");
-    let tid = task["id"].as_str().unwrap();
-
-    // Start: a separate workspace on its own branch.
+    // Start: separate workspace, own branch, and the Issue's conversation at L0.
     let (s, started) = h
         .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
         .await;
     assert_eq!(s, StatusCode::CREATED, "{started}");
-    assert_eq!(started["resumed"], false);
-    let sid = started["id"].as_str().unwrap().to_owned();
     let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
     assert!(ws.starts_with(h.rt.home.workspaces_dir()));
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let (_, c) = h.get(&format!("/api/v1/tasks/{tid}/conversation")).await;
+    assert_eq!(c["id"], conv.as_str());
+    assert_eq!(h.level(&conv).await, 0, "a new Issue starts at L0");
+
+    // Within L0: the model answers, but code is cut by the policy.
+    let r = h
+        .say(
+            &conv,
+            "Я проверил, что пустая строка приходит из конфига. Что дальше?",
+        )
+        .await;
+    assert_eq!(r[0]["role"], "assistant");
+    assert_eq!(r[0]["level"], 0);
     assert!(
-        started["branch"]
-            .as_str()
-            .unwrap()
-            .starts_with("est/include-the-upper-bound")
+        !r[0]["content"].as_str().unwrap().contains("let a"),
+        "{r:?}"
     );
-    let (s, again) = h
-        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+    assert_eq!(r[0]["cards"][0]["type"], "policy_notice");
+    assert_eq!(h.llm_calls(), 1);
+    assert!(h.llm.requests.lock().unwrap()[0].system.contains("L0"));
+
+    // Above the level: blocked, one-step escalation proposed, no model call.
+    let r = h.say(&conv, "Дай полное решение").await;
+    assert_eq!(r[0]["role"], "system");
+    let card = &r[0]["cards"][0];
+    assert_eq!(
+        (
+            card["type"].as_str(),
+            card["from"].as_u64(),
+            card["to"].as_u64()
+        ),
+        (Some("escalation"), Some(0), Some(1))
+    );
+    assert_eq!(
+        h.llm_calls(),
+        1,
+        "a blocked request never reaches the model"
+    );
+    let esc = card["escalation_id"].as_str().unwrap().to_owned();
+
+    // Consent raises one step; the request is re-processed and needs more.
+    let (s, r) = h
+        .post(
+            &format!("/api/v1/engagement/escalations/{esc}/accept"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    assert_eq!(h.level(&conv).await, 1);
+    assert_eq!(r[0]["cards"][0]["to"], 2);
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/engagement/escalations/{esc}/accept"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT, "consent cannot be reused");
+    let esc2 = r[0]["cards"][0]["escalation_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    h.post(
+        &format!("/api/v1/engagement/escalations/{esc2}/accept"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(h.level(&conv).await, 2);
+
+    // Declining answers within the current level (L2).
+    let (_, view) = h.get(&format!("/api/v1/conversations/{conv}")).await;
+    let esc3 = view["pending_escalation"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (_, r) = h
+        .post(
+            &format!("/api/v1/engagement/escalations/{esc3}/reject"),
+            json!({}),
+        )
         .await;
     assert_eq!(
-        (s, &again["id"], &again["resumed"]),
-        (StatusCode::OK, &json!(sid), &json!(true))
+        (r[0]["role"].as_str(), r[0]["level"].as_u64()),
+        (Some("assistant"), Some(2))
     );
-    let (_, t) = h.get(&format!("/api/v1/tasks/{tid}")).await;
-    assert_eq!(t["status"], "in-progress");
+    assert_eq!(h.level(&conv).await, 2);
+    assert_eq!(h.llm_calls(), 2);
+    let (_, view) = h.get(&format!("/api/v1/conversations/{conv}")).await;
+    assert!(view["pending_escalation"].is_null());
+    let statuses: Vec<_> = view["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|m| m["cards"].as_array().unwrap().clone())
+        .filter(|c| c["type"] == "escalation")
+        .map(|c| c["status"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(statuses, ["accepted", "accepted", "rejected"]);
 
-    // Mentor before any own attempt.
-    let base = format!("/api/v1/sessions/{sid}");
-    let (_, m) = h
-        .post(
-            &format!("{base}/mentor/ask"),
-            json!({ "question": "Покажи решение", "level": 4 }),
-        )
-        .await;
-    assert_eq!(m["help"]["granted"], 2, "{m}");
-    assert_eq!(m["constraints"]["code"], "illustrative");
-
-    // API question: redirected to sources, hidden tests are not revealed.
-    let (_, m) = h
-        .post(
-            &format!("{base}/mentor/ask"),
-            json!({ "question": "Что возвращает функция `parse_range`?" }),
-        )
-        .await;
-    assert_eq!(m["boundary"]["action"], "redirect");
-    assert_eq!(m["forward_to_model"], false);
-    let targets: Vec<_> = m["links"]
+    // Documentation Boundary: sources, no model, hidden tests stay hidden.
+    let r = h.say(&conv, "Что возвращает функция `parse_range`?").await;
+    assert_eq!(r[0]["cards"][0]["type"], "sources");
+    let targets: Vec<_> = r[0]["cards"][0]["links"]
         .as_array()
         .unwrap()
         .iter()
         .map(|l| l["target"].as_str().unwrap())
         .collect();
-    assert_eq!(targets, vec!["src/lib.rs:1"], "{m}");
+    assert_eq!(targets, ["src/lib.rs:1"]);
+    assert_eq!(h.llm_calls(), 2);
 
-    // The learner works in their own IDE and commits with their own git.
+    // A new Issue starts at L0 again; the previous level is not inherited.
+    let other = h.task(&pid, "Second issue").await;
+    let (_, c2) = h.get(&format!("/api/v1/tasks/{other}/conversation")).await;
+    assert_eq!(h.level(c2["id"].as_str().unwrap()).await, 0);
+    assert_eq!(h.level(&conv).await, 2);
+
+    // Own work in the IDE, visible through Git.
     let repo = Repo::open(&ws);
     let src = std::fs::read_to_string(ws.join("src/lib.rs")).unwrap();
     std::fs::write(
@@ -272,81 +404,143 @@ async fn full_learning_loop() {
         src.replace("..b.parse", "..=b.parse"),
     )
     .unwrap();
-    let (_, overview) = h.get(&base).await;
-    assert_eq!(
-        overview["changes"],
-        json!([{ "code": " M", "path": "src/lib.rs" }])
-    );
-    let (_, diff) = h.get(&format!("{base}/diff")).await;
-    assert!(diff.as_str().unwrap().contains("..=b.parse"));
     repo.add(&["src/lib.rs".into()]).unwrap();
     repo.commit("Include upper bound in parse_range", &learner())
         .unwrap();
-
-    let (_, overview) = h.get(&base).await;
-    assert_eq!(
-        overview["commits"][0]["subject"],
-        "Include upper bound in parse_range"
-    );
-    assert_eq!(overview["changes"], json!([]));
-    assert_eq!(
-        overview["task"]["title"],
-        "Include the upper bound in parse_range"
-    );
-    let (_, diff) = h.get(&format!("{base}/diff?against=base")).await;
+    let sid = started["id"].as_str().unwrap();
+    let (_, diff) = h
+        .get(&format!("/api/v1/sessions/{sid}/diff?against=base"))
+        .await;
     assert!(diff.as_str().unwrap().contains("..=b.parse"));
 
-    // One own commit unlocks solution-level help for this task.
-    let (_, m) = h
-        .post(
-            &format!("{base}/mentor/ask"),
-            json!({ "question": "Покажи решение", "level": 4 }),
-        )
-        .await;
-    assert_eq!(m["help"]["granted"], 4, "{m}");
-    let (_, history) = h.get(&format!("{base}/mentor/history")).await;
-    assert_eq!(history.as_array().unwrap().len(), 3);
-    assert_eq!(history[0]["payload"]["question"], "Покажи решение");
-
-    // Finish.
-    let (s, done) = h
-        .post(&format!("{base}/finish"), json!({ "outcome": "completed" }))
-        .await;
-    assert_eq!(s, StatusCode::OK, "{done}");
-    assert_eq!(done["status"], "completed");
+    // The conversation of an Issue in progress cannot be deleted.
     let (s, _) = h
-        .post(&format!("{base}/finish"), json!({ "outcome": "completed" }))
+        .call("DELETE", &format!("/api/v1/conversations/{conv}"), None)
         .await;
     assert_eq!(s, StatusCode::CONFLICT);
-    let (_, t) = h.get(&format!("/api/v1/tasks/{tid}")).await;
-    assert_eq!(t["status"], "done");
 
-    let (_, events) = h.get(&format!("{base}/events")).await;
-    let kinds: Vec<_> = events
+    // Completing the Issue sets the final ADI.
+    let (s, done) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK, "{done}");
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    assert_eq!(adi["aggregate"]["issues"], 1);
+    assert_eq!(adi["aggregate"]["provisional"], true);
+    let item = &adi["history"][0];
+    assert_eq!(item["scoring_version"], "observed-0.1");
+    assert_eq!(
+        item["observed_features"]["answers_by_level"],
+        json!([1, 0, 1, 0, 0])
+    );
+    assert_eq!(item["observed_features"]["own_commits"], 1);
+    assert_eq!(item["observed_features"]["escalations_accepted"], 2);
+    assert!(
+        adi["disclaimer"]
+            .as_str()
+            .unwrap()
+            .contains("не является оценкой")
+    );
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{other}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT, "no active session");
+
+    // The Skill Matrix is separate from ADI: untested skills are not zero.
+    let (_, m) = h.get("/api/v1/analytics/disciplines").await;
+    let dt = m["disciplines"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|e| e["kind"].as_str().unwrap())
-        .collect();
+        .find(|d| d["id"] == "debugging-testing")
+        .unwrap();
     assert_eq!(
-        kinds,
-        [
-            "session.started",
-            "session.resumed",
-            "mentor.request",
-            "mentor.request",
-            "mentor.request",
-            "session.finished"
-        ]
+        (
+            dt["status"].as_str(),
+            &dt["score"],
+            dt["practice_tasks"].as_u64()
+        ),
+        (Some("not_assessed"), &Value::Null, Some(1))
     );
-    assert_eq!(events[5]["payload"]["commits"], 1);
 
-    // Starting again continues in the same workspace.
-    let (s, next) = h
-        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+    // Privacy: provider shown, export contains the history, delete removes it.
+    let (_, p) = h.get("/api/v1/settings/privacy").await;
+    assert_eq!(p["llm"]["remote"], false);
+    let (s, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(export["format"], "craft-yourself-export/1");
+    assert!(export["conversations"].as_array().unwrap().len() >= 2);
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/conversations/{conv}"), None)
         .await;
-    assert_eq!(s, StatusCode::CREATED);
-    assert_eq!(next["workspace_path"], started["workspace_path"]);
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = h.get(&format!("/api/v1/conversations/{conv}")).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    assert_eq!(
+        adi["aggregate"]["issues"], 0,
+        "related aggregates are deleted too"
+    );
+}
+
+#[tokio::test]
+async fn without_a_model_the_policy_still_applies() {
+    let dir = tempfile::tempdir().unwrap();
+    let (origin, _) = make_origin(dir.path());
+    let rt = Runtime::build(EstHome::new(dir.path().join(".est")), Config::default())
+        .await
+        .unwrap();
+    let app = router(rt, None);
+    let req = |method: &str, uri: &str, body: Value| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("host", "localhost:7878")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    let json_of = |res: axum::response::Response| async move {
+        serde_json::from_slice::<Value>(&res.into_body().collect().await.unwrap().to_bytes())
+            .unwrap()
+    };
+    let p = json_of(
+        app.clone()
+            .oneshot(req("POST", "/api/v1/projects", json!({ "source": origin })))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let c = json_of(
+        app.clone()
+            .oneshot(req(
+                "POST",
+                "/api/v1/conversations",
+                json!({ "project_id": p["id"] }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let id = c["id"].as_str().unwrap();
+    let r = json_of(
+        app.clone()
+            .oneshot(req(
+                "POST",
+                &format!("/api/v1/conversations/{id}/messages"),
+                json!({ "content": "Что такое итератор?" }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(r[1]["role"], "system");
+    assert!(
+        r[1]["content"]
+            .as_str()
+            .unwrap()
+            .contains("модель ИИ не подключена")
+    );
 }
 
 #[tokio::test]
@@ -363,7 +557,7 @@ description = "Fix it."
 task_type = "bug-fix"
 difficulty = "beginner"
 learning_goals = ["Read code"]
-skills = ["code-reading"]
+disciplines = ["debugging-testing"]
 [source]
 repository = "file://{}"
 revision = "{}"
@@ -393,6 +587,7 @@ command = "cargo test"
         json!({ "type": "exercise", "id": "inclusive-range", "version": "1.0.0" })
     );
     assert_eq!(task["test_command"], "cargo test");
+    assert_eq!(task["mentor"]["max_level"], 4);
 
     let (_, again) = h
         .post("/api/v1/exercises/import", json!({ "manifest": manifest }))
