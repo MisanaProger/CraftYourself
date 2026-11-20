@@ -19,6 +19,8 @@ crates/
   est-exercises      Exercise Manifest (TOML)
   est-learning       learning content loader (embeds learning-artifacts/)
   est-problems       online-judge problems: links, statements, samples, workspace (pure)
+  est-issues         GitHub/GitLab Issues: links, suitability check, task draft (pure)
+  est-remote         forges and judges over HTTPS behind the RemoteSources port
   est-storage        SQLite repositories; migrations live in /migrations
   est-git            git CLI wrapper + GitPort
   est-sandbox        Docker/Podman runner + Sandbox port
