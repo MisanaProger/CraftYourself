@@ -28,8 +28,37 @@ struct FakeLlm {
     reply: Mutex<Option<String>>,
 }
 
-fn generated_content(system: &str, attempt: usize) -> Option<String> {
-    let text = if system.starts_with("You design short self-study programs") {
+/// Recommendations: one valid item of every kind, one with an invented
+/// program id (must be dropped). The unfinished task is taken from the
+/// snapshot the application sent.
+fn advice(request: &str) -> String {
+    let snapshot: Value =
+        serde_json::from_str(request.split_once("Activity snapshot:\n").unwrap().1).unwrap();
+    let task = snapshot["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["status"] != "done")
+        .map(|t| t["id"].clone())
+        .unwrap_or(Value::Null);
+    json!({ "summary": "You started well.", "items": [
+        { "title": "Finish the tests program", "reason": "1 of 6 lessons",
+          "action": { "kind": "open_program", "program_id": "testing" } },
+        { "title": "Invented", "reason": "x",
+          "action": { "kind": "open_program", "program_id": "rust-101" } },
+        { "title": "Back to the problem", "reason": "samples",
+          "action": { "kind": "continue_task", "task_id": task } },
+        { "title": "Practice parity", "reason": "math tag",
+          "action": { "kind": "solve_problems", "platform": "codeforces", "tags": ["math"], "rating": 900 } },
+        { "title": "Rest", "reason": "", "action": null }
+    ]})
+    .to_string()
+}
+
+fn generated_content(system: &str, request: &str, attempt: usize) -> Option<String> {
+    let text = if system.starts_with("You are the learning advisor") {
+        advice(request)
+    } else if system.starts_with("You design short self-study programs") {
         // The first outline is malformed: the application retries once.
         if attempt == 0 {
             "Sure! Here is a plan.".to_owned()
@@ -74,7 +103,12 @@ impl LlmProvider for FakeLlm {
 
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse> {
         let attempt = request.messages.len() / 2;
-        let generated = generated_content(&request.system, attempt);
+        let first = request
+            .messages
+            .first()
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
+        let generated = generated_content(&request.system, first, attempt);
         self.requests.lock().unwrap().push(request);
         let content = generated
             .or_else(|| self.reply.lock().unwrap().clone())
@@ -1395,4 +1429,70 @@ async fn problem_analysis() {
         list.iter()
             .any(|p| p["conversation_id"] == conv && p["problem_id"] == "4A")
     );
+}
+
+#[tokio::test]
+async fn recommendations_from_activity() {
+    let h = harness().await;
+    let (_, none) = h.get("/api/v1/recommendations").await;
+    assert_eq!(none, Value::Null);
+
+    let (_, started) = h.post("/api/v1/problems", watermelon("python")).await;
+    let conv = started["conversation_id"].as_str().unwrap();
+    h.say(conv, "my private idea: check parity with a secret trick")
+        .await;
+    h.post(
+        "/api/v1/learning/programs/testing/lessons/run-tests/complete",
+        json!({}),
+    )
+    .await;
+
+    // The learner can see exactly what the model is given: aggregates and
+    // titles, never messages.
+    let (_, activity) = h.get("/api/v1/recommendations/activity?lang=en").await;
+    let text = activity.to_string();
+    assert!(!text.contains("secret trick"), "{text}");
+    let testing = activity["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "testing")
+        .unwrap();
+    assert_eq!(testing["completed"], 1);
+    assert_eq!(activity["tasks"][0]["problem"]["platform"], "codeforces");
+    assert_eq!(activity["tasks"][0]["help_level"], "L0");
+
+    let (s, set) = h
+        .post("/api/v1/recommendations", json!({ "lang": "en" }))
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{set}");
+    let sent = h.llm.requests.lock().unwrap().last().unwrap().messages[0]
+        .content
+        .clone();
+    assert!(sent.contains("Write all texts in English") && !sent.contains("secret trick"));
+    let items = set["items"].as_array().unwrap();
+    let titles: Vec<_> = items.iter().map(|i| i["title"].as_str().unwrap()).collect();
+    assert_eq!(
+        titles,
+        [
+            "Finish the tests program",
+            "Back to the problem",
+            "Practice parity",
+            "Rest"
+        ]
+    );
+    // Titles and links come from the data and the code, not the model.
+    assert_eq!(items[0]["action"]["title"], testing["title"]);
+    assert_eq!(items[1]["action"]["conversation_id"], conv);
+    assert_eq!(
+        items[2]["action"]["url"],
+        "https://codeforces.com/problemset?tags=math%2C900-1100"
+    );
+    assert_eq!(items[3]["action"], Value::Null);
+    assert_eq!(set["model"], "fake/fake-1");
+
+    let (_, latest) = h.get("/api/v1/recommendations").await;
+    assert_eq!(latest["id"], set["id"]);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["recommendations"][0]["id"], set["id"]);
 }

@@ -439,3 +439,28 @@ pub trait GeneratedProgramRepository: Send + Sync {
     /// Marks generations left running by a previous daemon as failed.
     async fn fail_interrupted_generations(&self) -> AppResult<u64>;
 }
+
+/// Learning recommendations produced by a model from the learner's activity.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct RecommendationSet {
+    pub id: String,
+    pub created_at: est_core::Timestamp,
+    /// `provider/model` that wrote it.
+    pub model: String,
+    pub lang: String,
+    pub summary: String,
+    pub items: Vec<crate::recommendations::Recommendation>,
+    /// Exactly what the model was given.
+    pub activity: serde_json::Value,
+}
+
+#[async_trait]
+pub trait RecommendationRepository: Send + Sync {
+    async fn save_recommendations(&self, user: &UserId, set: &RecommendationSet) -> AppResult<()>;
+    /// Newest first.
+    async fn recommendations(
+        &self,
+        user: &UserId,
+        limit: usize,
+    ) -> AppResult<Vec<RecommendationSet>>;
+}

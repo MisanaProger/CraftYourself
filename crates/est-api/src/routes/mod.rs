@@ -14,6 +14,7 @@ mod learning;
 mod llm;
 mod problems;
 mod projects;
+mod recommendations;
 mod sessions;
 mod tasks;
 
@@ -122,6 +123,11 @@ pub fn api() -> Router<Runtime> {
             get(learning::artifact_file),
         )
         .route("/problems", get(problems::list).post(problems::import))
+        .route(
+            "/recommendations",
+            get(recommendations::latest).post(recommendations::generate),
+        )
+        .route("/recommendations/activity", get(recommendations::activity))
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))
         .route("/analytics/disciplines", get(analytics::disciplines))

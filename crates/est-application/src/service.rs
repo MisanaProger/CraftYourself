@@ -40,6 +40,7 @@ pub struct Ports {
     pub sandbox_runs: Arc<dyn SandboxRunRepository>,
     pub learning: Arc<dyn LearningProgressRepository>,
     pub generated: Arc<dyn GeneratedProgramRepository>,
+    pub recommendations: Arc<dyn RecommendationRepository>,
 }
 
 #[derive(Debug, Clone, Default)]
