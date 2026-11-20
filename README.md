@@ -41,6 +41,17 @@ Interface concepts: [`docs/design/`](docs/design)
   interactive boundary-values trainer in a sandboxed iframe and a practice
   project (a regression test, red → green) run in the sandbox. Six more
   programs are listed as *coming soon*.
+- **Programs generated on request.** Name a topic, level and number of
+  lessons; the connected model plans the program and writes reading lessons,
+  interactive HTML5 pages and quizzes. Answers are validated in code before
+  they are stored, quizzes are graded on the server, and progress is tracked
+  like in the built-in programs.
+- **Formulas and pages from the model.** LaTeX (`$…$`, `$$…$$`) is rendered
+  with KaTeX in lessons, quizzes and the chat. An HTML5 page the mentor
+  attaches (a ```` ```html ```` block) is shown in an isolated frame without
+  network access or access to the app; the policy allows one page per answer
+  from level L2 and removes pages below it. Animations, canvas, forms and
+  in-page messages work; storage lasts while the page is open.
 - **Projects and workspaces.** Connect a local Git repository (or clone a
   remote one); languages and license are detected; every Issue gets its own
   directory and branch in `~/.est/workspaces` and opens in your editor.

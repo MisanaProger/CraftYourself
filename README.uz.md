@@ -41,6 +41,17 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   tekshiriladigan savollar, izolyatsiyalangan iframe’dagi chegaraviy
   qiymatlar trenajyori va sandboxda ishga tushiriladigan amaliy loyiha
   (regressiya testi, qizil → yashil). Yana oltita dastur «tez orada» deb belgilangan.
+- **So‘rov bo‘yicha dasturlar.** Mavzu, daraja va darslar sonini kiriting —
+  ulangan sun’iy intellekt reja tuzadi va darslar, interaktiv HTML5 sahifalar
+  hamda testlar yozadi. Model javoblari saqlashdan oldin kodda tekshiriladi,
+  testlar serverda baholanadi, natijalar o‘rnatilgan dasturlardagidek hisobga olinadi.
+- **Sun’iy intellektdan formulalar va sahifalar.** LaTeX (`$…$`, `$$…$$`)
+  darslarda, testlarda va chatda KaTeX orqali ko‘rsatiladi. Mentor biriktirgan
+  HTML5 sahifa (```` ```html ```` bloki) tarmoqsiz va ilovaga kirishsiz
+  izolyatsiyalangan freymda ko‘rsatiladi; siyosat har bir javobda bitta
+  sahifaga L2 darajasidan boshlab ruxsat beradi, undan pastda sahifalar olib
+  tashlanadi. Animatsiyalar, canvas, formalar va sahifa ichidagi xabarlar
+  ishlaydi; ma’lumotlar sahifa ochiq turganda saqlanadi.
 - **Loyihalar va ish kataloglari.** Mahalliy Git repozitoriyni ulash (yoki
   masofaviyni klonlash), tillar va litsenziyani aniqlash, har bir Issue uchun
   `~/.est/workspaces` ichida alohida katalog va tarmoq, muharrirda ochish.

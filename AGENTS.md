@@ -74,9 +74,11 @@ browser build keeps working.
    default, `--cap-drop ALL`, `--read-only`, `no-new-privileges`, limits,
    read-only workspace mount). Network for a run requires the learner's
    explicit permission.
-4. **Learning artifacts are isolated.** They are served with the CSP
-   `sandbox allow-scripts` header and shown in `<iframe sandbox="allow-scripts">`
-   — never add `allow-same-origin`. They talk to the platform only through
+4. **Learning artifacts are isolated.** They — and HTML pages written by a
+   model (generated `page` lessons, ```html blocks in mentor answers) — are
+   served with the CSP `sandbox allow-scripts` header (`routes/isolated.rs`)
+   and shown in `<iframe sandbox="allow-scripts">` (`ui/IsolatedFrame.tsx`)
+   — never add `allow-same-origin`, never render model HTML in the app's DOM. They talk to the platform only through
    the validated `postMessage` protocol (`est:progress`, `est:resize`, `version: 1`).
 5. **The local daemon trusts only its own Host/Origin** (`est-api/src/guard.rs`).
    Mutating endpoints take JSON bodies.
