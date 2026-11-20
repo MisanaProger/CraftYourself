@@ -11,7 +11,7 @@ Craft Yourself follows the stages of spec v0.3 (`docs/architecture.md`).
 | 1. Project & Workspace | ✅ | Local/remote repositories, languages, license, per-Issue workspaces, IDE launch, Git status/diff |
 | 2. Language & Sandbox | ✅ | Adapters (Rust, C, C++, Python, JS/TS), Docker/Podman sandbox with limits and isolation, test summaries |
 | 3. Task & Issue Engine | ◐ | Tasks, exercise import, statuses, sessions, acceptance criteria; LeetCode/Codeforces problems pasted for a guided analysis with samples in the sandbox. ◯ importing GitHub/GitLab Issues, loading problem statements from the judge |
-| 4. Chat-first Conversation Engine | ◐ | Conversations, cards, history, WebSocket events. ◯ streaming answers |
+| 4. Chat-first Conversation Engine | ✅ | Conversations, cards, history, WebSocket events, streaming answers (code withheld until the policy check) |
 | 5. AI Gateway & Engagement | ◐ | OpenAI-compatible, OpenAI and Claude providers switchable from the UI (API keys and coding-plan subscriptions), L0–L4, consent, documentation boundary, network permission gate. ◯ gates for publishing Issues/PRs (no such actions yet) |
 | 6. Conversation Intelligence | ✅ | Session Summary written in code when a session ends; Knowledge Profile per discipline, tag and task type, feeding the model recommendations (export/delete ✅) |
 | 7. ADI & Skill Matrix | ◐ | ADI from observed events with double decay; Skill Matrix assessed from evidence (quizzes, trainers, practice, Issues) with status, confidence, dimensions and history. ◯ model-assisted ADI, skill-level evidence from Issues, Transfer dimension |
@@ -42,7 +42,6 @@ Craft Yourself follows the stages of spec v0.3 (`docs/architecture.md`).
 - Skill Matrix: skill-level evidence from Issues (exercise manifests naming
   skills, problem tags → algorithm skills), the Transfer dimension, skills for
   generated programs.
-- Streaming mentor answers over WebSocket.
 - Commit review that learns the repository's own conventions; PR preparation.
 - Import of open-source Issues with a suitability check.
 - Localized exercise manifests (title, description, criteria in ru/en/uz).

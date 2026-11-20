@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { handleAnswerEvent } from "../chat/answerDrafts";
 import type { DomainEvent } from "../types/api";
 
 /** Subscribes to `/api/v1/events` and refreshes affected queries. */
@@ -15,6 +16,8 @@ export function useLiveEvents() {
       socket = new WebSocket(`${proto}://${location.host}/api/v1/events`);
       socket.onmessage = (msg) => {
         const e = JSON.parse(msg.data) as DomainEvent;
+        // A streamed answer updates its draft, not the queries.
+        if (handleAnswerEvent(e)) return;
         if (e.kind.startsWith("project.")) qc.invalidateQueries({ queryKey: ["projects"] });
         if (e.kind.startsWith("task.") || e.kind.startsWith("session.")) {
           qc.invalidateQueries({ queryKey: ["tasks"] });

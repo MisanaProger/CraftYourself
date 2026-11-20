@@ -64,6 +64,9 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   ulangan sun’iy intellekt reja tuzadi va darslar, interaktiv HTML5 sahifalar
   hamda testlar yozadi. Model javoblari saqlashdan oldin kodda tekshiriladi,
   testlar serverda baholanadi, natijalar o‘rnatilgan dasturlardagidek hisobga olinadi.
+- **Jonli javoblar.** Mentor javobi model uni yozayotgan paytda paydo
+  bo‘ladi. Oldindan faqat siyosat hech qachon olib tashlamaydigan matn
+  ko‘rsatiladi: kod bloklari va HTML sahifalar butun javob tekshirilgach.
 - **Sun’iy intellektdan formulalar va sahifalar.** LaTeX (`$…$`, `$$…$$`)
   darslarda, testlarda va chatda KaTeX orqali ko‘rsatiladi. Mentor biriktirgan
   HTML5 sahifa (```` ```html ```` bloki) tarmoqsiz va ilovaga kirishsiz

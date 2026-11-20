@@ -1,3 +1,4 @@
+import { clearAnswerDraft, useAnswerDraft } from "./answerDrafts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -6,7 +7,7 @@ import { ThemeToggle } from "../app/theme";
 import { ContextPanel } from "../context-panels/ContextPanel";
 import { useT } from "../i18n";
 import { api } from "../services/api";
-import { LEVEL_CODES, type Level } from "../types/api";
+import { LEVEL_CODES, type Level, type Message } from "../types/api";
 import { Badge, ErrorBox, levelLabel, levelName, shortId } from "../ui";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -34,14 +35,21 @@ export function ConversationPage() {
   const send = useMutation({
     mutationFn: ({ text, excerpt }: { text: string; excerpt?: string }) => api.postMessage(id, text, excerpt),
     onMutate: ({ text }) => setPending(text),
-    onSettled: () => {
+    // The draft stays until the stored answer is loaded.
+    onSettled: async () => {
+      await refresh();
       setPending(null);
-      refresh();
+      clearAnswerDraft(id);
     },
   });
-  const accept = useMutation({ mutationFn: api.acceptEscalation, onSettled: refresh });
-  const reject = useMutation({ mutationFn: api.rejectEscalation, onSettled: refresh });
-  const raise = useMutation({ mutationFn: () => api.raiseLevel(id), onSettled: refresh });
+  const settle = async () => {
+    await refresh();
+    clearAnswerDraft(id);
+  };
+  const accept = useMutation({ mutationFn: api.acceptEscalation, onSettled: settle });
+  const reject = useMutation({ mutationFn: api.rejectEscalation, onSettled: settle });
+  const raise = useMutation({ mutationFn: () => api.raiseLevel(id), onSettled: settle });
+  const draft = useAnswerDraft(id);
   const saveCriteria = useMutation({
     mutationFn: (texts: string[]) => {
       const task = view.data!.task!;
@@ -59,7 +67,7 @@ export function ConversationPage() {
   const count = view.data?.messages.length ?? 0;
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
-  }, [count, pending]);
+  }, [count, pending, draft?.text, draft?.withheld]);
 
   if (view.error) return <ErrorBox error={view.error} />;
   const v = view.data;
@@ -101,7 +109,8 @@ export function ConversationPage() {
             )}
             <MessageList
               messages={v.messages}
-              pending={pending}
+              pending={pending && !isStored(v.messages, pending) ? pending : null}
+              draft={busy ? draft : null}
               busy={busy}
               onAccept={(e) => accept.mutate(e)}
               onReject={(e) => reject.mutate(e)}
@@ -116,4 +125,10 @@ export function ConversationPage() {
       </div>
     </div>
   );
+}
+
+/** The sent message is stored before the answer is written; show it once. */
+function isStored(messages: Message[], pending: string) {
+  const last = [...messages].reverse().find((m) => m.role === "user");
+  return last?.content === pending.trim();
 }
