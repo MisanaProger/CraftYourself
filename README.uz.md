@@ -53,6 +53,13 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   masalalarni yechish, qaysi dasturni yaratish. Model faqat umumlashgan
   ma’lumotlar va nomlarni ko‘radi — xabarlar va kodni hech qachon — va nima
   yuborilishini ko‘rishingiz mumkin.
+- **Sessiya xulosalari va bilim profili.** Issue yakunlanganda yoki
+  to‘xtatilganda kod kuzatilgan hodisalar bo‘yicha sessiya xulosasini tuzadi:
+  yordam darajalari, sandboxdagi testlar, qabul mezonlari, o‘z commitlari,
+  yakuniy ADI va «mustaqil» yoki «testlar tuzatildi» kabi signallar. Bilim
+  profili ularni fanlar, masala teglari va vazifa turlari bo‘yicha jamlaydi
+  («mustaqil», «rivojlanmoqda», «mashq kerak») va tavsiyalarga uzatadi. Bu
+  baho emas, maslahat: ADI va Skill Matrix mustaqil qoladi.
 - **So‘rov bo‘yicha dasturlar.** Mavzu, daraja va darslar sonini kiriting —
   ulangan sun’iy intellekt reja tuzadi va darslar, interaktiv HTML5 sahifalar
   hamda testlar yozadi. Model javoblari saqlashdan oldin kodda tekshiriladi,
