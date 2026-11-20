@@ -17,10 +17,46 @@ static COUNT: LazyLock<Regex> = LazyLock::new(|| {
 });
 static CTEST: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"tests passed, (\d+) tests? failed out of (\d+)").expect("regex"));
+/// `run_samples.sh` of an online-judge problem (est-problems).
+static SAMPLES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"est-samples: (\d+) passed, (\d+) failed").expect("regex"));
+/// Python's unittest: `Ran 4 tests in 0.001s` then `OK (skipped=1)` or
+/// `FAILED (failures=1, errors=1, skipped=1)`.
+static UNITTEST_RAN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^Ran (\d+) tests? in [\d.]+s").expect("regex"));
+static UNITTEST_END: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(OK|FAILED)(?: \(([^)]*)\))?\s*$").expect("regex"));
+static KV: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(failures|errors|skipped|expected failures|unexpected successes)=(\d+)")
+        .expect("regex")
+});
 static JEST: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*Tests:?\s+(.*)$").expect("regex"));
 
 pub fn summarize_tests(output: &str) -> Option<TestSummary> {
+    if let Some(c) = SAMPLES.captures_iter(output).last() {
+        return Some(TestSummary {
+            passed: c[1].parse().unwrap_or(0),
+            failed: c[2].parse().unwrap_or(0),
+            ignored: 0,
+        });
+    }
+    if let (Some(ran), Some(end)) = (
+        UNITTEST_RAN.captures_iter(output).last(),
+        UNITTEST_END.captures_iter(output).last(),
+    ) {
+        let total: u32 = ran[1].parse().unwrap_or(0);
+        let mut s = TestSummary::default();
+        for c in KV.captures_iter(end.get(2).map_or("", |m| m.as_str())) {
+            let n: u32 = c[2].parse().unwrap_or(0);
+            match &c[1] {
+                "failures" | "errors" | "unexpected successes" => s.failed += n,
+                _ => s.ignored += n,
+            }
+        }
+        s.passed = total.saturating_sub(s.failed + s.ignored);
+        return Some(s);
+    }
     // cargo test: one line per test binary; sum them.
     let mut cargo = TestSummary::default();
     let mut found = false;
@@ -108,5 +144,18 @@ mod tests {
         );
         assert_eq!(summarize_tests("      Tests  3 passed (3)"), s(3, 0, 0));
         assert_eq!(summarize_tests("compiling…\nerror[E0425]"), None);
+        assert_eq!(
+            summarize_tests(
+                "sample 01: ok\nsample 02: wrong answer\nest-samples: 1 passed, 1 failed"
+            ),
+            s(1, 1, 0)
+        );
+        let unittest = "test_a ... ok\n----------------------------------------------------------------------\n\
+                        Ran 4 tests in 0.002s\n\nFAILED (failures=1, errors=1, skipped=1)\n";
+        assert_eq!(summarize_tests(unittest), s(1, 2, 1));
+        assert_eq!(
+            summarize_tests("Ran 2 tests in 0.000s\n\nOK (skipped=1)\n"),
+            s(1, 0, 1)
+        );
     }
 }
