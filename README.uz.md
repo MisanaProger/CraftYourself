@@ -56,8 +56,11 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   **tarjima qiladi**. Cheklovlar kodda tekshiriladi: ortiqcha kod javobdan olib tashlanadi.
 - **Documentation Boundary.** Aniq API haqidagi savollar modelga bormaydi:
   javob — manba kodidagi ta’rifga, vazifa hujjatlariga va API Reference’ga havolalar.
-- **AI Gateway.** Istalgan OpenAI-mos endpoint: mahalliy Ollama, llama.cpp
-  server yoki tashqi API (faqat https, kalit muhit o‘zgaruvchisidan).
+- **AI Gateway.** API kaliti orqali Claude, ChatGPT, Gemini, DeepSeek, Kimi va
+  Qwen, kodlash rejalari obunalari (Kimi Code, Qwen Coding Plan), mahalliy
+  Ollama yoki istalgan OpenAI-mos API — «Sozlamalar → Neyrotarmoqlar» bo‘limida
+  ulanadi va almashtiriladi. Tashqi provayderlar faqat https; kalitlar
+  qurilmada (`~/.est/secrets`, faqat egasiga ruxsat) yoki muhit o‘zgaruvchisidan olinadi.
 - **ADI va Skill Matrix.** Har bir yakunlangan Issue bo‘yicha AI’ga
   bog‘liqlik indeksi kuzatilgan hodisalar asosida hisoblanadi va ikki marta
   so‘nish bilan o‘rtachalanadi (30 kun / 10 Issue). Engineering Skill Matrix
@@ -90,7 +93,7 @@ so‘ng `apps/desktop` ichida `cargo tauri build`.
 Bosh sahifada «Testlar» dasturini tanlang va birinchi darsdan boshlang.
 
 Grafik seanssiz (server, WSL) xuddi shu demon interfeysni brauzerga beradi:
-`cargo run -p est-cli -- serve` → http://127.0.0.1:7878. Modelni `~/.est/config/config.toml` faylida ulang:
+`cargo run -p est-cli -- serve` → http://127.0.0.1:7878. Modelni «Sozlamalar → Neyrotarmoqlar» bo‘limida yoki `~/.est/config/config.toml` faylida ulang:
 
 ```toml
 [llm]

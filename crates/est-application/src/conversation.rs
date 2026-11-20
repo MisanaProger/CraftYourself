@@ -509,13 +509,14 @@ impl App {
         user: &Message,
         decision: &RouteDecision,
     ) -> AppResult<Message> {
-        let Some(llm) = self.ports.llm.clone() else {
+        let Some(llm) = self.ports.llm.get() else {
             return Ok(Message::new(
                 &c.id,
                 MessageRole::System,
                 format!(
-                    "Запрос допустим на уровне {} ({}), но модель ИИ не подключена. Укажите провайдера в \
-                     разделе `[llm]` файла `~/.est/config/config.toml` (например, локальную Ollama).",
+                    "Запрос допустим на уровне {} ({}), но модель ИИ не подключена. Подключите провайдера в \
+                     «Настройки → Нейросети» (облачный по API-ключу или локальную Ollama) или в \
+                     разделе `[llm]` файла `~/.est/config/config.toml`.",
                     decision.level.code(),
                     decision.level.name_ru().to_lowercase()
                 ),

@@ -4,6 +4,7 @@
 pub mod config;
 mod error;
 mod guard;
+pub mod llm;
 mod routes;
 pub mod runtime;
 

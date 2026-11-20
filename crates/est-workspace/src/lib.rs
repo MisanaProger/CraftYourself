@@ -5,7 +5,8 @@
 //!
 //! ```text
 //! ~/.est/
-//! ├── config/      config.toml
+//! ├── config/      config.toml, providers.toml
+//! ├── secrets/     API keys entered in the UI (0700, files 0600)
 //! ├── database/    est.db
 //! ├── cache/       clones of remote projects
 //! ├── models/      local LLM weights (AI Gateway)
@@ -73,6 +74,16 @@ impl EstHome {
     pub fn workspaces_dir(&self) -> PathBuf {
         self.root.join("workspaces")
     }
+    /// API keys the learner entered in the UI. Never part of config,
+    /// events, logs or exports.
+    pub fn secrets_dir(&self) -> PathBuf {
+        self.root.join("secrets")
+    }
+    pub fn key_store(&self) -> KeyStore {
+        KeyStore {
+            dir: self.secrets_dir().join("llm"),
+        }
+    }
 
     /// Creates the directory tree. Idempotent.
     pub fn init(&self) -> std::io::Result<()> {
@@ -88,6 +99,96 @@ impl EstHome {
         }
         Ok(())
     }
+}
+
+/// API keys of AI providers, one file per provider, readable only by the
+/// owner. The keys are write-only from the API's point of view: the UI can
+/// set or remove a key and learn whether one exists, never read it back.
+#[derive(Debug, Clone)]
+pub struct KeyStore {
+    dir: PathBuf,
+}
+
+impl KeyStore {
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+
+    fn path(&self, id: &str) -> AppResult<PathBuf> {
+        if !est_core::is_slug(id) {
+            return Err(AppError::Invalid(format!("invalid key id {id:?}")));
+        }
+        Ok(self.dir.join(format!("{id}.key")))
+    }
+
+    pub fn get(&self, id: &str) -> AppResult<Option<String>> {
+        match std::fs::read_to_string(self.path(id)?) {
+            Ok(k) => Ok(Some(k.trim().to_owned()).filter(|k| !k.is_empty())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(AppError::Infrastructure(format!("key store: {e}"))),
+        }
+    }
+
+    pub fn has(&self, id: &str) -> bool {
+        self.get(id).ok().flatten().is_some()
+    }
+
+    pub fn set(&self, id: &str, key: &str) -> AppResult<()> {
+        let key = key.trim();
+        if key.is_empty() || key.len() > 4096 || key.chars().any(char::is_control) {
+            return Err(AppError::Invalid(
+                "the API key is empty or malformed".into(),
+            ));
+        }
+        let path = self.path(id)?;
+        let io = |e: std::io::Error| AppError::Infrastructure(format!("key store: {e}"));
+        create_private_dir(&self.dir).map_err(io)?;
+        let tmp = path.with_extension("key.tmp");
+        write_private(&tmp, key).map_err(io)?;
+        std::fs::rename(&tmp, &path).map_err(io)
+    }
+
+    pub fn remove(&self, id: &str) -> AppResult<()> {
+        match std::fs::remove_file(self.path(id)?) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(AppError::Infrastructure(format!("key store: {e}"))),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)
+}
+
+#[cfg(unix)]
+fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(text.as_bytes())?;
+    f.sync_all()
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    std::fs::write(path, text)
 }
 
 fn label(name: &str, id: &str) -> String {
@@ -180,6 +281,28 @@ impl IdeLauncher for EditorLauncher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_store_is_private_and_write_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = EstHome::new(dir.path()).key_store();
+        assert_eq!(store.get("claude-1").unwrap(), None);
+        assert!(store.set("../x", "k").is_err());
+        assert!(store.set("claude-1", "  ").is_err());
+        store.set("claude-1", " sk-test \n").unwrap();
+        assert_eq!(store.get("claude-1").unwrap().as_deref(), Some("sk-test"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let p = dir.path().join("secrets/llm/claude-1.key");
+            assert_eq!(
+                std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        store.remove("claude-1").unwrap();
+        assert!(!store.has("claude-1"));
+    }
 
     #[test]
     fn layout() {

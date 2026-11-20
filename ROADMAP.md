@@ -12,7 +12,7 @@ Craft Yourself follows the stages of spec v0.3 (`docs/architecture.md`).
 | 2. Language & Sandbox | ✅ | Adapters (Rust, C, C++, Python, JS/TS), Docker/Podman sandbox with limits and isolation, test summaries |
 | 3. Task & Issue Engine | ◐ | Tasks, exercise import, statuses, sessions, acceptance criteria. ◯ importing GitHub/GitLab Issues |
 | 4. Chat-first Conversation Engine | ◐ | Conversations, cards, history, WebSocket events. ◯ streaming answers |
-| 5. AI Gateway & Engagement | ◐ | OpenAI-compatible provider, L0–L4, consent, documentation boundary, network permission gate. ◯ gates for publishing Issues/PRs (no such actions yet) |
+| 5. AI Gateway & Engagement | ◐ | OpenAI-compatible, OpenAI and Claude providers switchable from the UI (API keys and coding-plan subscriptions), L0–L4, consent, documentation boundary, network permission gate. ◯ gates for publishing Issues/PRs (no such actions yet) |
 | 6. Conversation Intelligence | ◯ | Session Summary, Knowledge Profile, recommendations (export/delete ✅) |
 | 7. ADI & Skill Matrix | ◐ | ADI from observed events with double decay; ESM catalog. ◯ evidence-based skill assessment, model-assisted ADI |
 | 8. Interactive Learning | ◐ | Programs, lessons, quizzes, sandboxed artifacts, practice projects. ◯ more programs, embedded components |

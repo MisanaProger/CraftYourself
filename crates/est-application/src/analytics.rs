@@ -179,7 +179,7 @@ impl App {
     pub fn privacy_settings(&self) -> PrivacySettings {
         PrivacySettings {
             storage: "local",
-            llm: self.ports.llm.as_ref().map(|l| l.info()),
+            llm: self.ports.llm.get().map(|l| l.info()),
             history_analytics: true,
         }
     }

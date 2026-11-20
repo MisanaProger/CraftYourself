@@ -10,6 +10,7 @@ use crate::runtime::Runtime;
 mod analytics;
 mod conversations;
 mod learning;
+mod llm;
 mod projects;
 mod sessions;
 mod tasks;
@@ -108,6 +109,14 @@ pub fn api() -> Router<Runtime> {
         .route("/analytics/skills", get(analytics::skills))
         .route("/data/export", post(analytics::export))
         .route("/settings/privacy", get(analytics::privacy))
+        .route("/llm/presets", get(llm::presets))
+        .route("/llm/providers", get(llm::list).post(llm::add))
+        .route(
+            "/llm/providers/{id}",
+            axum::routing::patch(llm::update).delete(llm::remove),
+        )
+        .route("/llm/active", post(llm::set_active))
+        .route("/llm/models", post(llm::models))
 }
 
 async fn health(State(rt): State<Runtime>) -> Json<Value> {

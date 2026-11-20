@@ -232,6 +232,72 @@ export interface PrivacySettings {
   history_analytics: boolean;
 }
 
+export type LlmProtocol = "openai-compatible" | "openai" | "anthropic";
+export type LlmAuth = "api_key" | "subscription" | "none";
+export type KeySource = "stored" | "env" | "missing" | "not_needed";
+
+export interface LlmPreset {
+  id: string;
+  name: string;
+  vendor: string;
+  protocol: LlmProtocol;
+  auth: LlmAuth;
+  base_url: string;
+  models: string[];
+  api_key_env: string | null;
+  key_url: string | null;
+  docs_url: string;
+}
+
+export interface LlmProviderView {
+  id: string;
+  preset: string;
+  name: string;
+  protocol: LlmProtocol;
+  auth: LlmAuth;
+  base_url: string;
+  model: string;
+  api_key_env: string | null;
+  key: KeySource;
+  remote: boolean;
+  active: boolean;
+  read_only: boolean;
+}
+
+export interface LlmProviders {
+  active: string | null;
+  providers: LlmProviderView[];
+}
+
+export interface NewLlmProvider {
+  preset: string;
+  name?: string;
+  base_url?: string;
+  model: string;
+  protocol?: LlmProtocol;
+  api_key?: string;
+  api_key_env?: string;
+  activate?: boolean;
+}
+
+export interface LlmProviderUpdate {
+  name?: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  api_key_env?: string;
+  clear_key?: boolean;
+}
+
+export interface LlmModelsQuery {
+  provider_id?: string;
+  preset?: string;
+  base_url?: string;
+  protocol?: LlmProtocol;
+  api_key?: string;
+  api_key_env?: string;
+}
+
 export interface DomainEvent {
   kind: string;
   session_id?: string;

@@ -24,7 +24,7 @@ crates/
   est-languages      language adapters (describe commands, never run them)
   est-projects       project inspection (languages, license)
   est-workspace      ~/.est layout, editor launcher
-  est-ai             OpenAI-compatible LLM provider
+  est-ai             LLM providers (OpenAI-compatible, OpenAI, Claude) + presets
   est-api            Axum REST /api/v1, WebSocket, composition root (runtime.rs)
   est-cli            `est` binary
 apps/desktop/        Tauri 2 desktop app (separate workspace): runs the daemon

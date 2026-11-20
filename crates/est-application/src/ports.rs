@@ -285,6 +285,27 @@ pub trait LlmProvider: Send + Sync {
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse>;
 }
 
+/// The currently active AI Gateway provider. The learner can switch
+/// providers at runtime (settings page), so the application reads the slot
+/// on every request instead of holding a provider for its whole lifetime.
+#[derive(Default)]
+pub struct LlmSlot(std::sync::RwLock<Option<std::sync::Arc<dyn LlmProvider>>>);
+
+impl LlmSlot {
+    pub fn new(provider: Option<std::sync::Arc<dyn LlmProvider>>) -> Self {
+        Self(std::sync::RwLock::new(provider))
+    }
+
+    /// The active provider, `None` when no model is connected.
+    pub fn get(&self) -> Option<std::sync::Arc<dyn LlmProvider>> {
+        self.0.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set(&self, provider: Option<std::sync::Arc<dyn LlmProvider>>) {
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = provider;
+    }
+}
+
 // ---- sandbox ---------------------------------------------------------------
 
 /// One command to execute in isolation.

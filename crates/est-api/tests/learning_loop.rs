@@ -721,6 +721,98 @@ async fn without_a_model_the_policy_still_applies() {
 }
 
 #[tokio::test]
+async fn connects_cloud_providers_without_leaking_keys() {
+    let h = harness().await;
+    let (s, presets) = h.get("/api/v1/llm/presets").await;
+    assert_eq!(s, StatusCode::OK);
+    let ids: Vec<&str> = presets
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    for must in ["claude", "chatgpt", "gemini", "deepseek", "kimi", "qwen"] {
+        assert!(ids.contains(&must), "{must}");
+    }
+
+    // A remote provider must use https.
+    let (s, _) = h
+        .post(
+            "/api/v1/llm/providers",
+            json!({ "preset": "custom", "base_url": "http://api.example.com/v1", "model": "m" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Add Claude with a key: the key is stored, never returned.
+    let (s, claude) = h
+        .post(
+            "/api/v1/llm/providers",
+            json!({ "preset": "claude", "model": "claude-opus-5-5", "api_key": "sk-ant-secret" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{claude}");
+    assert_eq!(claude["key"], "stored");
+    assert_eq!(claude["remote"], true);
+    assert_eq!(claude["active"], false);
+    assert!(!claude.to_string().contains("sk-ant-secret"));
+    let id = claude["id"].as_str().unwrap().to_owned();
+    let config = std::fs::read_to_string(h.rt.home.config_dir().join("providers.toml")).unwrap();
+    assert!(config.contains("claude-opus-5-5") && !config.contains("sk-ant-secret"));
+
+    // A subscription plan without a key cannot be activated.
+    let (_, kimi) = h
+        .post(
+            "/api/v1/llm/providers",
+            json!({ "preset": "kimi-code", "model": "kimi-for-coding", "api_key_env": "EST_TEST_UNSET_KEY" }),
+        )
+        .await;
+    assert_eq!(kimi["auth"], "subscription");
+    assert_eq!(kimi["key"], "missing");
+    let (s, _) = h
+        .post("/api/v1/llm/active", json!({ "id": kimi["id"] }))
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, p) = h.get("/api/v1/settings/privacy").await;
+    assert_eq!(p["llm"]["remote"], false, "the working provider is kept");
+
+    // Activate Claude: the mentor now sends context to the cloud.
+    let (s, list) = h.post("/api/v1/llm/active", json!({ "id": id })).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(list["active"], id.as_str());
+    let (_, p) = h.get("/api/v1/settings/privacy").await;
+    assert_eq!(p["llm"]["remote"], true);
+    assert_eq!(p["llm"]["name"], "Claude");
+    assert_eq!(
+        p["llm"]["endpoint"],
+        "https://api.anthropic.com/v1/messages"
+    );
+    let (_, events) = h.get("/api/v1/sessions").await;
+    assert!(!events.to_string().contains("sk-ant-secret"));
+
+    // Changing the model applies at once; deleting removes key and model.
+    let (s, _) = h
+        .call(
+            "PATCH",
+            &format!("/api/v1/llm/providers/{id}"),
+            Some(json!({ "model": "claude-sonnet-5-5" })),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, p) = h.get("/api/v1/settings/privacy").await;
+    assert_eq!(p["llm"]["model"], "claude-sonnet-5-5");
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/llm/providers/{id}"), None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(!h.rt.home.key_store().has(&id));
+    let (_, p) = h.get("/api/v1/settings/privacy").await;
+    assert!(p["llm"].is_null());
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert!(!export.to_string().contains("sk-ant-secret"));
+}
+
+#[tokio::test]
 async fn imports_exercise_manifest() {
     let h = harness().await;
     let project = h.new_project().await;

@@ -34,8 +34,8 @@ pub struct Ports {
     pub engagement: Arc<dyn EngagementRepository>,
     pub adi: Arc<dyn AdiRepository>,
     pub export: Arc<dyn DataExporter>,
-    /// AI Gateway provider; `None` when no model is configured.
-    pub llm: Option<Arc<dyn LlmProvider>>,
+    /// AI Gateway provider; empty when no model is configured.
+    pub llm: Arc<LlmSlot>,
     pub sandbox: Arc<dyn Sandbox>,
     pub sandbox_runs: Arc<dyn SandboxRunRepository>,
     pub learning: Arc<dyn LearningProgressRepository>,
@@ -118,6 +118,25 @@ impl App {
 
     pub fn user(&self) -> &User {
         &self.user
+    }
+
+    /// Info about the active AI provider, if any.
+    pub fn llm_info(&self) -> Option<ProviderInfo> {
+        self.ports.llm.get().map(|l| l.info())
+    }
+
+    /// Switches the AI provider the mentor uses. Policy is unaffected: the
+    /// level, limits and documentation boundary are decided before any
+    /// provider is called. The event records where context now goes (never
+    /// a key).
+    pub async fn set_llm(&self, provider: Option<Arc<dyn LlmProvider>>) -> AppResult<()> {
+        let info = provider.as_ref().map(|p| p.info());
+        self.ports.llm.set(provider);
+        self.emit(DomainEvent::new(
+            events::AI_PROVIDER_CHANGED,
+            json!({ "provider": info }),
+        ))
+        .await
     }
 
     pub(crate) async fn emit(&self, event: DomainEvent) -> AppResult<()> {
