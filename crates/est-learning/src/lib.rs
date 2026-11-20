@@ -123,6 +123,20 @@ pub struct LessonDef {
     /// Short intro shown above artifacts and practice.
     #[serde(default)]
     pub intro: Text,
+    /// Skill Matrix skills this lesson gives evidence for, as
+    /// `discipline/skill` (quizzes, artifacts and practice only).
+    #[serde(default)]
+    pub skills: Vec<String>,
+}
+
+impl LessonDef {
+    /// `discipline/skill` pairs of [`LessonDef::skills`].
+    pub fn skill_refs(&self) -> Vec<(&str, &str)> {
+        self.skills
+            .iter()
+            .filter_map(|s| s.split_once('/'))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -426,7 +440,31 @@ mod tests {
             }
             let p = program(&entry.id).unwrap();
             assert_eq!(p.id, entry.id);
+            for d in &p.disciplines {
+                assert!(est_discipline::is_known_discipline(d), "{}: {d}", p.id);
+            }
             for lesson in &p.lessons {
+                assert_eq!(
+                    lesson.skill_refs().len(),
+                    lesson.skills.len(),
+                    "{}",
+                    lesson.id
+                );
+                for (d, skill) in lesson.skill_refs() {
+                    assert!(
+                        p.disciplines.iter().any(|x| x == d)
+                            && est_discipline::is_known_skill(d, skill),
+                        "{}: {d}/{skill}",
+                        lesson.id
+                    );
+                }
+                if lesson.kind == LessonKind::Reading {
+                    assert!(
+                        lesson.skills.is_empty(),
+                        "reading gives no evidence: {}",
+                        lesson.id
+                    );
+                }
                 match lesson.kind {
                     LessonKind::Reading => {
                         for l in ["ru", "en"] {

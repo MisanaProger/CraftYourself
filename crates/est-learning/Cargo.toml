@@ -10,3 +10,6 @@ include_dir.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+
+[dev-dependencies]
+est-discipline.workspace = true
