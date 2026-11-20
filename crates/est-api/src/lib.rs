@@ -30,6 +30,21 @@ pub fn router(rt: Runtime, frontend_dir: Option<&Path>) -> Router {
     ))
 }
 
+/// API and WebSocket plus a custom service for everything else — used by the
+/// desktop app to serve the frontend embedded in its binary. The Host/Origin
+/// guard covers both.
+pub fn router_with_fallback(rt: Runtime, fallback: Router) -> Router {
+    let allowed_hosts = rt.config.allowed_hosts();
+    Router::new()
+        .nest("/api/v1", routes::api())
+        .with_state(rt)
+        .fallback_service(fallback)
+        .layer(axum::middleware::from_fn_with_state(
+            allowed_hosts,
+            guard::local_only,
+        ))
+}
+
 /// Serves the daemon until Ctrl+C.
 pub async fn serve(
     listener: tokio::net::TcpListener,

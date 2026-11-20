@@ -43,6 +43,7 @@
 | `est-learning` | §18 | программы, уроки, тесты, артефакты, шаблоны практики из `learning-artifacts/` |
 | `est-storage` | §19 | SQLite, миграции `migrations/` |
 | `est-api`, `est-cli` | §22, §16 | REST, WebSocket, Host/Origin-защита; CLI `est` |
+| `apps/desktop` | §16, §21 | десктопное приложение на Tauri 2: демон в том же процессе на loopback-порту, встроенный интерфейс, без IPC |
 
 ## Сквозной сценарий (§30)
 

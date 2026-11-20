@@ -63,6 +63,7 @@ Interface concepts: [`docs/design/`](docs/design)
   computed from observed events and averaged with double decay (30 days /
   10 Issues). The Engineering Skill Matrix shows untested skills as
   *not assessed*, never as zero. The two are independent.
+- **Desktop app (Tauri)** for Linux, Windows and macOS; the same interface also runs in a browser.
 - **Interface in Russian, English and Uzbek**; dark and light themes.
 - **Privacy.** Data stays local; export your whole history as JSON; delete a
   conversation together with its events and the Issue's ADI.
@@ -73,19 +74,24 @@ assessment, commit and PR review, the other learning programs. See the
 
 ## Quick start
 
-You need Rust ≥ 1.85, `git`, Node.js 22 (for the interface) and, to run tests
-in the sandbox, Podman or Docker.
+Craft Yourself is a **desktop app** built with [Tauri](https://tauri.app): one
+window that contains the local daemon (database, sandbox, mentor) and the
+interface. You need Rust ≥ 1.90, `git`, Node.js 22 and, to run tests in the
+sandbox, Podman or Docker. On Linux, Tauri also needs WebKitGTK:
+`sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev`.
 
 ```sh
-cargo build --release
-(cd frontend && npm ci && npm run build)
-
-./target/release/est init                    # ~/.est and config.toml
-./target/release/est serve                   # http://127.0.0.1:7878
+(cd frontend && npm ci && npm run build)          # the interface is embedded into the app
+cargo run --release --manifest-path apps/desktop/Cargo.toml
 ```
 
-Open the address, pick the *Tests* program on the home page and start with
-the first lesson. To connect a model, add to `~/.est/config/config.toml`:
+Installers (`.deb`, `.AppImage`, `.msi`, `.dmg`): `cargo install tauri-cli --version "^2"`,
+then `cargo tauri build` in `apps/desktop`.
+
+Pick the *Tests* program on the home page and start with the first lesson.
+
+Without a desktop session (a server, WSL), the same daemon serves the
+interface in a browser: `cargo run -p est-cli -- serve` → http://127.0.0.1:7878. To connect a model, add to `~/.est/config/config.toml`:
 
 ```toml
 [llm]
@@ -115,6 +121,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cd frontend && npm run dev           # http://localhost:5173 → API on :7878
+cd apps/desktop && cargo clippy -- -D warnings   # desktop app (needs WebKitGTK)
 EST_SANDBOX_IT=1 cargo test -p est-sandbox   # real-container isolation test
 ```
 

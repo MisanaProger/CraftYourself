@@ -61,6 +61,7 @@ IDE, чат с ИИ-наставником, который **помогает р
   считается по наблюдаемым событиям и усредняется с двойным затуханием
   (30 дней / 10 Issue). Engineering Skill Matrix показывает непроверенный навык
   как «не оценено», а не 0. Они независимы.
+- **Десктопное приложение (Tauri)** для Linux, Windows и macOS; тот же интерфейс работает и в браузере.
 - **Интерфейс на русском, английском и узбекском**; тёмная и светлая темы.
 - **Приватность.** Данные локально; экспорт всей истории в JSON; удаление
   диалога вместе с событиями и ADI задачи.
@@ -70,19 +71,24 @@ IDE, чат с ИИ-наставником, который **помогает р
 
 ## Быстрый старт
 
-Нужны Rust ≥ 1.85, `git`, Node.js 22 (для интерфейса) и, для запуска тестов в
-песочнице, Podman или Docker.
+Craft Yourself — **десктопное приложение** на [Tauri](https://tauri.app): одно
+окно, внутри которого локальный демон (база, песочница, ментор) и интерфейс.
+Нужны Rust ≥ 1.90, `git`, Node.js 22 и, для запуска тестов в песочнице, Podman
+или Docker. На Linux Tauri также нужен WebKitGTK:
+`sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev`.
 
 ```sh
-cargo build --release
-(cd frontend && npm ci && npm run build)
-
-./target/release/est init                    # ~/.est и config.toml
-./target/release/est serve                   # http://127.0.0.1:7878
+(cd frontend && npm ci && npm run build)          # интерфейс встраивается в приложение
+cargo run --release --manifest-path apps/desktop/Cargo.toml
 ```
 
-Откройте адрес, выберите на главной программу «Тесты» и начните с первого
-урока. Модель подключается в `~/.est/config/config.toml`:
+Установщики (`.deb`, `.AppImage`, `.msi`, `.dmg`): `cargo install tauri-cli --version "^2"`,
+затем `cargo tauri build` в `apps/desktop`.
+
+Выберите на главной программу «Тесты» и начните с первого урока.
+
+Без графической сессии (сервер, WSL) тот же демон отдаёт интерфейс в браузер:
+`cargo run -p est-cli -- serve` → http://127.0.0.1:7878. Модель подключается в `~/.est/config/config.toml`:
 
 ```toml
 [llm]
@@ -112,6 +118,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cd frontend && npm run dev           # http://localhost:5173 → API на :7878
+cd apps/desktop && cargo clippy -- -D warnings   # десктопное приложение (нужен WebKitGTK)
 EST_SANDBOX_IT=1 cargo test -p est-sandbox   # проверка изоляции на реальном контейнере
 ```
 
