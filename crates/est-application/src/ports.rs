@@ -464,3 +464,35 @@ pub trait RecommendationRepository: Send + Sync {
         limit: usize,
     ) -> AppResult<Vec<RecommendationSet>>;
 }
+
+/// Session Summaries, written in code when a session ends.
+#[async_trait]
+pub trait SessionSummaryRepository: Send + Sync {
+    /// Inserts or replaces the summary of its session.
+    async fn save_summary(
+        &self,
+        user: &UserId,
+        summary: &est_domain::SessionSummary,
+    ) -> AppResult<()>;
+    async fn summary(&self, session: &SessionId) -> AppResult<Option<est_domain::SessionSummary>>;
+    /// Newest first.
+    async fn summaries(&self, user: &UserId) -> AppResult<Vec<est_domain::SessionSummary>>;
+}
+
+/// One observed result of a quiz attempt or an artifact, kept as Skill
+/// Matrix evidence (lesson progress keeps only the best score).
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct LessonResult {
+    pub program_id: String,
+    pub lesson_id: String,
+    pub source: est_discipline::EvidenceSource,
+    pub score: u8,
+    pub observed_at: est_core::Timestamp,
+}
+
+#[async_trait]
+pub trait LessonResultRepository: Send + Sync {
+    async fn record_result(&self, user: &UserId, result: &LessonResult) -> AppResult<()>;
+    /// Oldest first.
+    async fn lesson_results(&self, user: &UserId) -> AppResult<Vec<LessonResult>>;
+}

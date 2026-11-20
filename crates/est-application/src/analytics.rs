@@ -48,7 +48,12 @@ pub struct PrivacySettings {
 
 impl App {
     /// Observed features of a completed Issue (v0.3 §10.3–10.4).
-    async fn observed_features(&self, session: &LearningSession) -> AppResult<ObservedFeatures> {
+    /// `until`: ignore events after this moment (a past session's summary).
+    pub(crate) async fn observed_features(
+        &self,
+        session: &LearningSession,
+        until: Option<est_core::Timestamp>,
+    ) -> AppResult<ObservedFeatures> {
         let mut f = ObservedFeatures {
             own_commits: self.commits_since_base(session).await?,
             ..Default::default()
@@ -61,6 +66,8 @@ impl App {
             .events
             .for_conversation(conversation, None)
             .await?
+            .into_iter()
+            .filter(|e| until.is_none_or(|u| e.event.at <= u))
         {
             let p = &e.event.payload;
             match e.event.kind.as_str() {
@@ -93,7 +100,7 @@ impl App {
 
     /// Final ADI of a completed Issue, stored with its scoring version.
     pub(crate) async fn assess_adi(&self, session: &LearningSession) -> AppResult<AdiAssessment> {
-        let features = self.observed_features(session).await?;
+        let features = self.observed_features(session, None).await?;
         let s = est_dependency::score_issue(&features);
         let saved = self
             .ports
@@ -163,16 +170,23 @@ impl App {
             .into_iter()
             .filter(|t| t.status == TaskStatus::Done)
             .collect();
-        let disciplines = est_discipline::matrix(lang, |id| {
-            done.iter()
-                .filter(|t| t.disciplines.iter().any(|d| d == id))
-                .count() as u32
-        });
+        let evidence = self.skill_evidence(lang).await?;
+        let disciplines = est_discipline::matrix(
+            lang,
+            |id| {
+                done.iter()
+                    .filter(|t| t.disciplines.iter().any(|d| d == id))
+                    .count() as u32
+            },
+            &evidence,
+            est_core::now(),
+        );
         Ok(SkillMatrix {
             catalog_version: est_discipline::CATALOG_VERSION,
             disciplines,
-            note: "Оценка навыков по evidence появится на этапе 7. Пока все навыки — «не оценено»: \
-                   отсутствие данных не равно нулевому навыку.",
+            note: "Assessed from observed evidence only: quiz attempts, artifact results, \
+                   completed practice and Issues. Reading is not evidence, the ADI is not an input, \
+                   and a skill without evidence is not_assessed, never zero.",
         })
     }
 

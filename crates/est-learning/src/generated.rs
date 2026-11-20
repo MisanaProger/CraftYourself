@@ -111,6 +111,7 @@ impl GeneratedProgram {
                     artifact: None,
                     practice: None,
                     intro: Text::new(),
+                    skills: Vec::new(),
                 })
                 .collect(),
         }

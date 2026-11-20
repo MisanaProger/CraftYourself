@@ -210,14 +210,43 @@ export interface AdiOverview {
 
 export type AssessmentStatus = "not_assessed" | "insufficient_evidence" | "provisional" | "established" | "needs_reassessment";
 
-export interface MatrixDiscipline {
+export type Dimension = "theory" | "practice" | "diagnosis" | "transfer" | "independence";
+export type EvidenceSource = "quiz" | "artifact" | "practice" | "issue";
+
+/** Assessment of a skill or discipline from observed evidence; no data is not zero. */
+export interface Assessment {
+  status: AssessmentStatus;
+  score: number | null;
+  confidence: "low" | "medium" | "high" | null;
+  evidence_count: number;
+  dimensions: { dimension: Dimension; score: number; evidence_count: number }[];
+  last_observed: string | null;
+}
+
+export interface Evidence {
+  discipline: string;
+  skill: string | null;
+  source: EvidenceSource;
+  dimension: Dimension;
+  score: number;
+  reference: string;
+  title: string;
+  observed_at: string;
+}
+
+export interface MatrixSkill extends Assessment {
+  id: string;
+  name: string;
+}
+
+export interface MatrixDiscipline extends Assessment {
   id: string;
   name: string;
   group: "fundamental" | "engineering";
-  status: AssessmentStatus;
-  score: number | null;
   practice_tasks: number;
-  skills: { id: string; name: string; status: AssessmentStatus; score: number | null; evidence_count: number }[];
+  skills: MatrixSkill[];
+  /** Newest first. */
+  history: Evidence[];
 }
 
 export interface SkillMatrix {
@@ -496,4 +525,87 @@ export interface RecommendationSet {
   summary: string;
   items: Recommendation[];
   activity: unknown;
+}
+
+export type Signal =
+  | "worked_independently"
+  | "heavy_help"
+  | "declined_help"
+  | "used_documentation"
+  | "tests_green"
+  | "tests_recovered"
+  | "tests_red_at_finish"
+  | "no_test_runs"
+  | "criteria_met"
+  | "criteria_open"
+  | "own_commits"
+  | "no_commits"
+  | "abandoned";
+
+/** What happened in one finished session, written in code from observed events. */
+export interface SessionSummary {
+  session_id: string;
+  task_id: string;
+  conversation_id: string | null;
+  task_title: string;
+  task_type: TaskType;
+  difficulty: Difficulty;
+  disciplines: string[];
+  topics: string[];
+  outcome: "completed" | "abandoned";
+  started_at: string;
+  finished_at: string;
+  duration_minutes: number;
+  commits: number;
+  help: {
+    final_level: Level;
+    max_level: Level;
+    answers_by_level: number[];
+    conceptual_questions: number;
+    service_answers: number;
+    documentation_redirects: number;
+    user_messages: number;
+    escalations_accepted: number;
+    escalations_rejected: number;
+  };
+  runs: {
+    test_runs: number;
+    passed: number;
+    failed: number;
+    last: RunStatus | null;
+    last_tests: TestSummary | null;
+    recovered: boolean;
+  };
+  criteria_total: number;
+  criteria_done: number;
+  adi: number | null;
+  signals: Signal[];
+  created_at: string;
+}
+
+export type Standing = "independent" | "developing" | "needs_practice";
+
+export interface TopicKnowledge {
+  kind: "discipline" | "tag" | "task_type";
+  id: string;
+  label: string;
+  sessions: number;
+  completed: number;
+  abandoned: number;
+  independent: number;
+  heavy_help: number;
+  tests_green: number;
+  average_adi: number | null;
+  last_practised: string;
+  standing: Standing;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface KnowledgeProfile {
+  sessions: number;
+  completed: number;
+  abandoned: number;
+  topics: TopicKnowledge[];
+  recent: SessionSummary[];
+  note: string;
 }

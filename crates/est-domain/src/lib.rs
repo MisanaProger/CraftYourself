@@ -5,6 +5,7 @@
 
 mod conversation;
 mod engagement;
+mod knowledge;
 mod language;
 mod project;
 mod sandbox;
@@ -13,6 +14,10 @@ mod task;
 
 pub use conversation::{Card, Conversation, ConversationStatus, Message, MessageRole, SourceLink};
 pub use engagement::{EngagementLevel, EngagementState, Escalation, EscalationStatus};
+pub use knowledge::{
+    Confidence, HelpStats, KnowledgeProfile, MAX_TOPICS, RunStats, SessionSummary, Signal,
+    Standing, TopicKind, TopicKnowledge, normalize_topic, normalize_topics,
+};
 pub use language::{CommandKind, CommandSpec, LanguageDetection};
 pub use project::{NewProject, Project};
 pub use sandbox::{RunKind, RunStatus, SandboxRun, TestSummary};

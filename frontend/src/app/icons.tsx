@@ -109,6 +109,11 @@ export const Icon = {
       <path {...P} d="M11 7l-5 9M13 7l5 9M7.2 18h9.6" />
     </svg>
   ),
+  knowledge: () => (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+      <path {...P} d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" />
+    </svg>
+  ),
   adi: () => (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
       <path {...P} d="M4 20V14M9 20V10M14 20v-6M19 20V6" />

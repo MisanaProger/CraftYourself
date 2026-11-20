@@ -52,6 +52,14 @@ Interface concepts: [`docs/design/`](docs/design)
   or LeetCode by topic and rating, programs to generate. It sees only
   aggregates and titles — never your messages or code — and you can see
   exactly what is sent.
+- **Session summaries and Knowledge Profile.** When an Issue is completed or
+  abandoned, the code writes a summary of the session from observed events:
+  help levels, tests in the sandbox, acceptance criteria, own commits, the
+  final ADI and signals such as *on your own* or *fixed failing tests*. The
+  Knowledge Profile aggregates them per discipline, problem tag and task type
+  (*independent*, *developing*, *needs practice*) and feeds the
+  recommendations. It is advice, not a grade: ADI and the Skill Matrix stay
+  independent.
 - **Programs generated on request.** Name a topic, level and number of
   lessons; the connected model plans the program and writes reading lessons,
   interactive HTML5 pages and quizzes. Answers are validated in code before
@@ -85,8 +93,12 @@ Interface concepts: [`docs/design/`](docs/design)
   (`~/.est/secrets`, owner-only) or come from an environment variable.
 - **ADI and Skill Matrix.** The AI Dependency Index of each completed Issue is
   computed from observed events and averaged with double decay (30 days /
-  10 Issues). The Engineering Skill Matrix shows untested skills as
-  *not assessed*, never as zero. The two are independent.
+  10 Issues). The Engineering Skill Matrix scores skills from observed
+  evidence — quiz attempts, trainer results, completed practice and Issues
+  (tests, acceptance criteria, help levels) — with a status, confidence,
+  dimensions (theory, practice, diagnosis, independence) and the evidence
+  history. Reading is not evidence, and untested skills are *not assessed*,
+  never zero. The two are independent: the ADI is not an input.
 - **Desktop app (Tauri)** for Linux, Windows and macOS; the same interface also runs in a browser.
 - **Interface in Russian, English and Uzbek**; dark and light themes.
 - **Privacy.** Data stays local; export your whole history as JSON; delete a

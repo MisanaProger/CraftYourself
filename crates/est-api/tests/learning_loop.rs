@@ -698,7 +698,9 @@ async fn full_learning_loop() {
         .await;
     assert_eq!(s, StatusCode::CONFLICT, "no active session");
 
-    // The Skill Matrix is separate from ADI: untested skills are not zero.
+    // The completed Issue is evidence for its discipline as a whole (from
+    // tests and help levels, not from the ADI); skills without evidence
+    // stay not assessed, never zero.
     let (_, m) = h.get("/api/v1/analytics/disciplines").await;
     let dt = m["disciplines"]
         .as_array()
@@ -709,10 +711,25 @@ async fn full_learning_loop() {
     assert_eq!(
         (
             dt["status"].as_str(),
-            &dt["score"],
+            dt["evidence_count"].as_u64(),
             dt["practice_tasks"].as_u64()
         ),
-        (Some("not_assessed"), &Value::Null, Some(1))
+        (Some("insufficient_evidence"), Some(1), Some(1))
+    );
+    assert!(dt["score"].is_u64());
+    assert!(
+        dt["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["source"] == "issue")
+    );
+    assert!(
+        dt["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["score"].is_null() && s["status"] == "not_assessed")
     );
 
     // Privacy: provider shown, export contains the history, delete removes it.
@@ -1113,6 +1130,66 @@ async fn testing_program() {
     assert_eq!(tiles[0]["completed"], 4);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["learning_progress"].as_array().unwrap().len(), 4);
+    // Two quiz attempts and one artifact result; reading is not evidence.
+    assert_eq!(export["lesson_results"].as_array().unwrap().len(), 3);
+
+    // Skill Matrix evidence: the lessons' skills, from observed results.
+    let (_, m) = h.get("/api/v1/analytics/disciplines?lang=en").await;
+    let dt = m["disciplines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["id"] == "debugging-testing")
+        .unwrap()
+        .clone();
+    let skill = |id: &str| {
+        dt["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    // The quiz was retaken: the latest attempt counts, both are history.
+    let unit = skill("unit-integration");
+    assert_eq!(
+        (unit["score"].as_u64(), unit["status"].as_str()),
+        (Some(100), Some("insufficient_evidence"))
+    );
+    assert_eq!(unit["dimensions"][0]["dimension"], "theory");
+    assert_eq!(
+        skill("edge-cases")["score"],
+        100,
+        "artifact, clamped to 100"
+    );
+    // Practice: tests green (100), no criteria checked (0) → 50; no help → independence 100.
+    let regression = skill("regression");
+    assert_eq!(regression["score"], 75);
+    assert_eq!(
+        regression["dimensions"],
+        json!([{ "dimension": "practice", "score": 50, "evidence_count": 1 },
+               { "dimension": "independence", "score": 100, "evidence_count": 1 }])
+    );
+    assert_eq!(skill("reproduction")["score"], 75);
+    assert!(skill("debugger")["score"].is_null());
+    // The discipline: three things observed from three sources.
+    assert_eq!(
+        (
+            dt["status"].as_str(),
+            dt["evidence_count"].as_u64(),
+            dt["score"].as_u64(),
+            dt["confidence"].as_str()
+        ),
+        (Some("established"), Some(3), Some(83), Some("medium"))
+    );
+    let history = dt["history"].as_array().unwrap();
+    assert_eq!(history.len(), 7);
+    assert_eq!(history[0]["source"], "practice");
+    assert!(history.iter().any(|e| e["source"] == "quiz"
+        && e["score"] == 0
+        && e["title"] == "Check: reading test output"));
+    assert_eq!(m["catalog_version"], "esm-catalog-0.2");
 }
 
 #[tokio::test]
@@ -1495,4 +1572,183 @@ async fn recommendations_from_activity() {
     assert_eq!(latest["id"], set["id"]);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["recommendations"][0]["id"], set["id"]);
+}
+
+#[tokio::test]
+async fn session_summaries_and_knowledge_profile() {
+    let h = harness().await;
+    let (_, empty) = h.get("/api/v1/knowledge/profile?lang=en").await;
+    assert_eq!(
+        (
+            empty["sessions"].as_u64(),
+            empty["topics"].as_array().map(Vec::len)
+        ),
+        (Some(0), Some(0))
+    );
+
+    let pid = h.new_project().await["id"].as_str().unwrap().to_owned();
+    let tid = h.task(&pid, "Include the upper bound").await;
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    let (s, _) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(
+        s,
+        StatusCode::CONFLICT,
+        "no summary while the session is active"
+    );
+
+    h.say(
+        &conv,
+        "My private hunch: the upper bound is excluded. What next?",
+    )
+    .await;
+    let (s, _) = h
+        .call(
+            "PUT",
+            &format!("/api/v1/tasks/{tid}/acceptance-criteria"),
+            Some(json!({ "criteria": [{ "text": "Upper bound included", "done": true }] })),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    // Tests fail first, then pass.
+    for command in ["cargo test fail_case", "cargo test"] {
+        let (_, run) = h
+            .post(
+                &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+                json!({ "kind": "test", "command": command }),
+            )
+            .await;
+        h.wait_run(run["id"].as_str().unwrap()).await;
+    }
+    let repo = Repo::open(&ws);
+    let src = std::fs::read_to_string(ws.join("src/lib.rs")).unwrap();
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        src.replace("..b.parse", "..=b.parse"),
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit("Include upper bound", &learner()).unwrap();
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Written in code from observed data: counts and signals, no messages.
+    let (s, summary) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(s, StatusCode::OK, "{summary}");
+    assert!(!summary.to_string().contains("private hunch"));
+    assert_eq!(summary["outcome"], "completed");
+    assert_eq!(summary["task_title"], "Include the upper bound");
+    assert_eq!(summary["commits"], 1);
+    assert_eq!(summary["help"]["user_messages"], 1);
+    assert_eq!(
+        (
+            summary["criteria_total"].as_u64(),
+            summary["criteria_done"].as_u64()
+        ),
+        (Some(1), Some(1))
+    );
+    assert_eq!(
+        (
+            summary["runs"]["test_runs"].as_u64(),
+            summary["runs"]["recovered"].as_bool(),
+            summary["runs"]["last"].as_str()
+        ),
+        (Some(2), Some(true), Some("passed"))
+    );
+    assert!(summary["adi"].is_u64());
+    assert_eq!(
+        summary["signals"],
+        json!([
+            "worked_independently",
+            "tests_green",
+            "tests_recovered",
+            "criteria_met",
+            "own_commits"
+        ])
+    );
+
+    // An abandoned Issue.
+    let t2 = h.task(&pid, "Rewrite the parser").await;
+    let (_, s2) = h
+        .post(&format!("/api/v1/tasks/{t2}/start"), json!({}))
+        .await;
+    let sid2 = s2["id"].as_str().unwrap().to_owned();
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/sessions/{sid2}/finish"),
+            json!({ "outcome": "abandoned" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, abandoned) = h.get(&format!("/api/v1/sessions/{sid2}/summary")).await;
+    assert_eq!(abandoned["adi"], Value::Null);
+    assert_eq!(abandoned["signals"], json!(["no_test_runs", "abandoned"]));
+
+    // The profile aggregates per topic, with names in the asked language.
+    let (_, profile) = h.get("/api/v1/knowledge/profile?lang=en").await;
+    assert_eq!(
+        (
+            profile["sessions"].as_u64(),
+            profile["completed"].as_u64(),
+            profile["abandoned"].as_u64()
+        ),
+        (Some(2), Some(1), Some(1))
+    );
+    let topic = |kind: &str, id: &str| {
+        profile["topics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["kind"] == kind && t["id"] == id)
+            .cloned()
+            .unwrap()
+    };
+    let dt = topic("discipline", "debugging-testing");
+    assert_eq!(dt["label"], "Debugging and testing");
+    assert_eq!(
+        (dt["completed"].as_u64(), dt["abandoned"].as_u64()),
+        (Some(1), Some(1))
+    );
+    assert_eq!(
+        (dt["standing"].as_str(), dt["confidence"].as_str()),
+        (Some("independent"), Some("low"))
+    );
+    assert_eq!(topic("task_type", "bug-fix")["sessions"], 2);
+    assert_eq!(profile["recent"][0]["session_id"], sid2.as_str());
+
+    // It feeds the recommendations' snapshot and the export.
+    let (_, activity) = h.get("/api/v1/recommendations/activity?lang=en").await;
+    let k = &activity["knowledge_profile"];
+    assert!(
+        k["topics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "debugging-testing" && t["standing"] == "independent")
+    );
+    assert_eq!(
+        k["recent_sessions"][0]["signals"],
+        json!(["no_test_runs", "abandoned"])
+    );
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["session_summaries"].as_array().unwrap().len(), 2);
+
+    // Deleting the conversation drops what was counted from it; the rest is
+    // rebuilt from what is still stored.
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/conversations/{conv}"), None)
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, rebuilt) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(rebuilt["conversation_id"], Value::Null);
+    assert_eq!(rebuilt["help"]["user_messages"], 0);
+    assert_eq!(rebuilt["adi"], Value::Null);
+    assert_eq!(rebuilt["runs"]["test_runs"], 2);
+    assert_eq!(rebuilt["commits"], 1);
 }

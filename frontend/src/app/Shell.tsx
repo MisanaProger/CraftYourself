@@ -50,6 +50,7 @@ const NAV: { to: string; key: Key; icon: () => JSX.Element; end?: boolean }[] = 
   { to: "/projects", key: "nav.projects", icon: Icon.projects },
   { to: "/skills", key: "nav.skills", icon: Icon.skills },
   { to: "/adi", key: "nav.adi", icon: Icon.adi },
+  { to: "/knowledge", key: "nav.knowledge", icon: Icon.knowledge },
   { to: "/settings", key: "nav.settings", icon: Icon.settings },
 ];
 

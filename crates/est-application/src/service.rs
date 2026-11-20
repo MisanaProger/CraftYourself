@@ -41,6 +41,8 @@ pub struct Ports {
     pub learning: Arc<dyn LearningProgressRepository>,
     pub generated: Arc<dyn GeneratedProgramRepository>,
     pub recommendations: Arc<dyn RecommendationRepository>,
+    pub summaries: Arc<dyn SessionSummaryRepository>,
+    pub lesson_results: Arc<dyn LessonResultRepository>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -552,9 +554,11 @@ impl App {
         // Temporary build caches are removed with the session (v0.3 §17).
         self.ports.sandbox.discard(session.id.as_str()).await?;
         // The final ADI is set only for a completed Issue (v0.3 §10.2).
-        if outcome == SessionOutcome::Completed {
-            self.assess_adi(&session).await?;
-        }
+        let adi = match outcome {
+            SessionOutcome::Completed => Some(self.assess_adi(&session).await?.score),
+            SessionOutcome::Abandoned => None,
+        };
+        self.summarize_session(&session, adi).await?;
         Ok(session)
     }
 
