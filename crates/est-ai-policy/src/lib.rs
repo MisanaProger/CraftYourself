@@ -10,19 +10,23 @@
 //! * [`constraints`] — whether code may be generated and how much of the
 //!   solution may be revealed at the current level;
 //! * [`tools`] — explicit permissions for every mentor tool;
-//! * [`stream`] — what of an answer may be shown before it is checked.
+//! * [`stream`] — what of an answer may be shown before it is checked;
+//! * [`gates`] — permission gates for reading from and publishing to
+//!   forges and judges.
 //!
 //! The model can neither raise its own level nor assume consent.
 
 pub mod boundary;
 pub mod constraints;
 pub mod engagement;
+pub mod gates;
 pub mod stream;
 pub mod tools;
 
 pub use boundary::{BoundaryDecision, MentorRequest, QueryKind, classify};
 pub use constraints::{CodeAllowance, ResponseConstraints};
 pub use engagement::required_level;
+pub use gates::{GateDecision, Initiator, PublishContext, PublishDraft, PublishKind};
 pub use tools::{Decision, PolicyConfig, PolicyEngine, Tool, ToolRequest};
 
 use est_domain::{EngagementLevel, EngagementState};
