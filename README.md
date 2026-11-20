@@ -45,8 +45,9 @@ Interface concepts: [`docs/design/`](docs/design)
   statement and samples and pick Python, C++ or Rust: you get a workspace
   with a solution template, the samples run in the sandbox, and the mentor
   guides you through the statement, examples, idea, complexity and edge
-  cases — starting at L0, with questions instead of the answer. Nothing is
-  downloaded from the judge.
+  cases — starting at L0, with questions instead of the answer. With your
+  permission EST loads the statement, samples, tags and rating from
+  Codeforces or LeetCode itself; you review them before starting.
 - **Recommendations.** The connected model suggests next steps from your
   activity: programs to finish, Issues to continue, problems on Codeforces
   or LeetCode by topic and rating, programs to generate. It sees only
@@ -74,6 +75,18 @@ Interface concepts: [`docs/design/`](docs/design)
   network access or access to the app; the policy allows one page per answer
   from level L2 and removes pages below it. Animations, canvas, forms and
   in-page messages work; storage lasts while the page is open.
+- **Open-source Issues.** Paste a GitHub or GitLab Issue link and allow EST
+  to read it: fixed rules check whether it suits a learner (closed Issues,
+  pull requests, archived repositories and rejected labels are refused;
+  assignees, thin descriptions or long discussions are flagged; *good first
+  issue* and checklists count in its favour). The import connects the
+  repository and creates a task — type and difficulty from the labels, the
+  checklist as acceptance criteria — that starts at L0 like any other.
+- **Nothing leaves without your permission.** Reading from a forge or judge
+  needs a tick for that request; publishing (a comment on your Issue) is
+  always a draft first, showing exactly what goes where, and is sent only
+  when you confirm that draft. The mentor can do neither. Tokens come from
+  environment variables named in `[remote]` of `config.toml`.
 - **Projects and workspaces.** Connect a local Git repository (or clone a
   remote one); languages and license are detected; every Issue gets its own
   directory and branch in `~/.est/workspaces` and opens in your editor.
@@ -107,8 +120,8 @@ Interface concepts: [`docs/design/`](docs/design)
 - **Privacy.** Data stays local; export your whole history as JSON; delete a
   conversation together with its events and the Issue's ADI.
 
-Not yet: Session Summary and Knowledge Profile, loading problem statements from the judge, evidence-based skill
-assessment, commit and PR review, the other learning programs. See the
+Not yet: commit and PR review and publishing pull requests, model-assisted
+ADI, the other learning programs. See the
 [roadmap](ROADMAP.md).
 
 ## Quick start

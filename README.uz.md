@@ -45,8 +45,9 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   joylashtiring va Python, C++ yoki Rust’ni tanlang: yechim shabloni bilan ish
   katalogi yaratiladi, misollar sandboxda ishga tushiriladi, mentor esa
   bosqichma-bosqich olib boradi — shart, misollar, g‘oya, murakkablik,
-  chegaraviy holatlar — L0 dan boshlab, javob o‘rniga savollar bilan. Saytdan
-  hech narsa yuklab olinmaydi.
+  chegaraviy holatlar — L0 dan boshlab, javob o‘rniga savollar bilan. Sizning
+  ruxsatingiz bilan EST shart, misollar, teglar va reytingni Codeforces yoki
+  LeetCode’dan o‘zi yuklaydi; boshlashdan oldin ularni tekshirasiz.
 - **Tavsiyalar.** Ulangan sun’iy intellekt faolligingiz asosida keyingi
   qadamlarni taklif qiladi: qaysi dasturlarni tugatish, qaysi Issue’larga
   qaytish, Codeforces yoki LeetCode’da mavzu va reyting bo‘yicha qaysi
@@ -74,6 +75,19 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   sahifaga L2 darajasidan boshlab ruxsat beradi, undan pastda sahifalar olib
   tashlanadi. Animatsiyalar, canvas, formalar va sahifa ichidagi xabarlar
   ishlaydi; ma’lumotlar sahifa ochiq turganda saqlanadi.
+- **Open source Issue’lari.** GitHub yoki GitLab Issue havolasini joylashtiring
+  va EST’ga uni o‘qishga ruxsat bering: qat’iy qoidalar uning o‘quvchiga mosligini
+  tekshiradi (yopilgan Issue’lar, pull request’lar, arxivlangan repozitoriylar va
+  rad etilgan belgilar qabul qilinmaydi; ijrochi, qisqa tavsif yoki uzun muhokama
+  belgilanadi; *good first issue* va chek-listlar uning foydasiga). Import
+  repozitoriyni ulaydi va vazifa yaratadi — tur va murakkablik belgilardan,
+  chek-list qabul mezonlari sifatida — u boshqalari kabi L0 dan boshlanadi.
+- **Ruxsatingizsiz hech narsa chiqmaydi.** Platforma yoki masalalar saytidan
+  o‘qish shu so‘rov uchun belgi talab qiladi; nashr (Issue’ingizga izoh) har
+  doim avval qoralama bo‘lib, nima va qayerga ketishini ko‘rsatadi va faqat shu
+  qoralamani tasdiqlaganingizda yuboriladi. Mentor buning hech birini qila
+  olmaydi. Tokenlar `config.toml` dagi `[remote]` da nomlangan muhit
+  o‘zgaruvchilaridan olinadi.
 - **Loyihalar va ish kataloglari.** Mahalliy Git repozitoriyni ulash (yoki
   masofaviyni klonlash), tillar va litsenziyani aniqlash, har bir Issue uchun
   `~/.est/workspaces` ichida alohida katalog va tarmoq, muharrirda ochish.
@@ -108,8 +122,8 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
   suhbatni hodisalari va vazifa ADI’si bilan birga o‘chirish.
 
-Hozircha yo‘q: Session Summary va Knowledge Profile, masala shartlarini saytdan yuklash, dalillar asosida
-ko‘nikmalarni baholash, kommit va PR tekshiruvi, qolgan o‘quv dasturlari.
+Hozircha yo‘q: kommit va PR tekshiruvi hamda pull request’larni nashr qilish,
+model ishtirokidagi ADI, qolgan o‘quv dasturlari.
 [ROADMAP.md](ROADMAP.md) ga qarang.
 
 ## Tez boshlash
