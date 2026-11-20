@@ -1,0 +1,49 @@
+manifest_version = 1
+
+[exercise]
+id = "testing-leap-year-regression"
+version = "1.0.0"
+title = "Regression test: February 2000"
+description = """
+Users report that `days_in_month(2000, 2)` returns 28, but February 2000 had 29 days.
+First write a test that reproduces the report and fails. Run it in the sandbox and read
+the output. Then fix the code and make the whole suite green. Replace the weak `test1`
+with tests that cover every rule of the leap-year definition and the month boundaries.
+"""
+task_type = "bug-fix"
+difficulty = "beginner"
+learning_goals = [
+    "Reproduce a reported bug with a failing test before fixing it",
+    "Cover each rule and boundary with its own well-named test",
+    "Run tests in the sandbox and read their output",
+]
+disciplines = ["debugging-testing"]
+acceptance_criteria = [
+    "A test reproducing the report (February 2000) failed before the fix",
+    "Leap-year rules are covered: 2024, 2023, 1900, 2000",
+    "Month boundaries are covered: 0, 1, 12, 13",
+    "All tests pass in the sandbox",
+]
+
+[source]
+repository = "{{repository}}"
+revision = "{{revision}}"
+license = "MIT"
+language = "rust"
+
+[commands]
+test = "cargo test"
+
+[[criteria]]
+id = "tests-pass"
+kind = "command"
+description = "All tests pass"
+command = "cargo test"
+
+[[criteria]]
+id = "regression-first"
+kind = "commits"
+description = "The failing regression test is committed before the fix"
+
+[mentor]
+max_level = 4

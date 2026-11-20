@@ -1,0 +1,69 @@
+id = "testing"
+version = "1.0.0"
+disciplines = ["debugging-testing"]
+title.ru = "Тесты: запуск и качество"
+title.en = "Tests: running and quality"
+title.uz = "Testlar: ishga tushirish va sifat"
+summary.ru = "От «как запустить» до «как написать тест, которому можно доверять»."
+summary.en = "From “how do I run them” to “how do I write a test I can trust”."
+summary.uz = "«Qanday ishga tushiraman»dan «ishonsa bo‘ladigan testni qanday yozaman»gacha."
+
+[[lesson]]
+id = "run-tests"
+kind = "reading"
+minutes = 15
+content = "01-run-tests"
+title.ru = "Как запускать тесты и читать вывод"
+title.en = "Running tests and reading their output"
+title.uz = "Testlarni ishga tushirish va natijani o‘qish"
+
+[[lesson]]
+id = "read-output"
+kind = "quiz"
+minutes = 10
+quiz = "read-output"
+title.ru = "Проверка: читаем вывод тестов"
+title.en = "Check: reading test output"
+title.uz = "Tekshiruv: test natijasini o‘qish"
+
+[[lesson]]
+id = "good-test"
+kind = "reading"
+minutes = 20
+content = "02-good-test"
+title.ru = "Анатомия качественного теста"
+title.en = "Anatomy of a good test"
+title.uz = "Sifatli test anatomiyasi"
+
+[[lesson]]
+id = "better-test"
+kind = "quiz"
+minutes = 10
+quiz = "better-test"
+title.ru = "Проверка: какой тест лучше?"
+title.en = "Check: which test is better?"
+title.uz = "Tekshiruv: qaysi test yaxshiroq?"
+
+[[lesson]]
+id = "boundaries"
+kind = "artifact"
+minutes = 15
+artifact = "boundary-values"
+title.ru = "Тренажёр: граничные значения"
+title.en = "Trainer: boundary values"
+title.uz = "Trenajyor: chegaraviy qiymatlar"
+intro.ru = "Подберите входные данные так, чтобы тесты покрыли каждый класс эквивалентности и каждую границу правила скидки."
+intro.en = "Pick inputs so that the tests cover every equivalence class and every boundary of the discount rule."
+intro.uz = "Testlar chegirma qoidasining har bir ekvivalentlik sinfi va har bir chegarasini qamrab olishi uchun kirish qiymatlarini tanlang."
+
+[[lesson]]
+id = "regression"
+kind = "practice"
+minutes = 30
+practice = "leap-year"
+title.ru = "Практика: регрессионный тест — красный → зелёный"
+title.en = "Practice: a regression test — red → green"
+title.uz = "Amaliyot: regressiya testi — qizil → yashil"
+intro.ru = "Craft Yourself создаст маленький проект с ошибкой и отдельный рабочий каталог. Сначала напишите тест, который падает из-за ошибки, запустите его в песочнице, потом исправьте код и добейтесь зелёного прогона."
+intro.en = "Craft Yourself creates a small project with a bug and its own workspace. First write a test that fails because of the bug, run it in the sandbox, then fix the code until the run is green."
+intro.uz = "Craft Yourself xatoli kichik loyiha va alohida ish katalogini yaratadi. Avval xato tufayli yiqiladigan test yozing, uni sandboxda ishga tushiring, so‘ng kodni tuzatib, yashil natijaga erishing."

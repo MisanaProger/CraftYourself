@@ -1,0 +1,9 @@
+[package]
+name = "est-discipline"
+description = "Engineering Skill Matrix: catalog of disciplines and skills, assessment statuses"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

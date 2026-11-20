@@ -1,0 +1,22 @@
+[package]
+name = "est-application"
+description = "Use cases of Engineering Skills Trainer and the ports they need"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+est-ai-policy.workspace = true
+est-core.workspace = true
+est-documentation.workspace = true
+est-domain.workspace = true
+est-exercises.workspace = true
+est-learning.workspace = true
+est-dependency.workspace = true
+est-discipline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true

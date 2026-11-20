@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boundary values</title>
+<style>
+  :root { --bg:#15181d; --surface:#1b1f25; --border:#2c313a; --text:#ecebe8; --muted:#8e939b; --accent:#ff7a1a; --ok:#3ccf7a; --bad:#ff6b6b; color-scheme: dark; }
+  :root[data-theme="light"] { --bg:#ffffff; --surface:#f6f6f3; --border:#e1e1dc; --text:#17191c; --muted:#6a6f76; --accent:#e8650a; --ok:#1f9d55; --bad:#c2332b; color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  h1 { font-size:1.1rem; margin:0 0 .5rem; }
+  .rule { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem; margin-bottom:1rem; }
+  .rule code { font-family: ui-monospace, Menlo, monospace; }
+  .add { display:flex; gap:.5rem; flex-wrap:wrap; align-items:end; margin-bottom:1rem; }
+  label { display:flex; flex-direction:column; gap:.2rem; font-size:.85rem; color:var(--muted); }
+  input, select, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:.45rem .6rem; }
+  input { width:9rem; }
+  button { cursor:pointer; background:var(--accent); border-color:var(--accent); color:#120a03; font-weight:600; }
+  button.secondary { background:transparent; color:var(--text); border-color:var(--border); font-weight:400; }
+  table { width:100%; border-collapse:collapse; margin-bottom:1rem; }
+  th, td { text-align:left; padding:.4rem .5rem; border-bottom:1px solid var(--border); }
+  th { font-size:.8rem; color:var(--muted); font-weight:500; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .muted { color:var(--muted); }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:.5rem; margin:.5rem 0 1rem; }
+  .chip { border:1px solid var(--border); border-radius:8px; padding:.4rem .6rem; font-size:.9rem; }
+  .chip.done { border-color: var(--ok); }
+  .score { font-size:1.6rem; font-weight:700; }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+  .x { background:transparent; border:0; color:var(--muted); padding:0 .3rem; font-weight:400; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="rule" id="rule"></div>
+<div class="add" id="add">
+  <label><span id="l-total"></span><input id="total" type="number" min="0" max="100000" step="1" required></label>
+  <label><span id="l-expected"></span>
+    <select id="expected"><option value="0">0%</option><option value="5">5%</option><option value="10">10%</option></select>
+  </label>
+  <button type="button" id="b-add"></button>
+</div>
+<table>
+  <thead><tr><th id="h-total"></th><th id="h-expected"></th><th id="h-result"></th><th></th></tr></thead>
+  <tbody id="cases"></tbody>
+</table>
+<div class="row"><button id="check"></button><button class="secondary" id="reset"></button></div>
+<section id="report" hidden>
+  <p class="score" id="score"></p>
+  <div class="grid" id="coverage"></div>
+  <p id="advice"></p>
+</section>
+<script>
+(() => {
+  "use strict";
+  const T = {
+    ru: { title: "Граничные значения: правило скидки", rule: "Магазин даёт скидку по сумме заказа: <b>меньше 1000</b> — без скидки, <b>от 1000 до 4999</b> — 5%, <b>от 5000</b> — 10%. Составьте набор тестов: сумма и ожидаемая скидка. Цель — покрыть каждый класс и каждую границу с обеих сторон, не раздувая набор.", total: "Сумма заказа", expected: "Ожидаемая скидка", add: "Добавить тест", hTotal: "Сумма", hExpected: "Ожидание", hResult: "Проверка", check: "Проверить набор", reset: "Сбросить", correct: "ожидание верно", wrong: "ожидание неверно: правило даёт", classes: ["Класс: меньше 1000", "Класс: 1000–4999", "Класс: от 5000"], bounds: ["Граница 999 | 1000", "Граница 4999 | 5000"], both: "обе стороны", oneSide: "только одна сторона", none: "не покрыто", perfect: "Отлично: каждый класс и обе стороны каждой границы покрыты, ожидания верны.", missing: "Не хватает: ", redundant: "Набор можно сократить: несколько тестов проверяют одно и то же.", wrongExp: "Есть неверные ожидания — тест с ошибочным ожиданием проверяет не то правило.", score: "Покрытие" },
+    en: { title: "Boundary values: the discount rule", rule: "A shop gives a discount by order total: <b>below 1000</b> — none, <b>1000 to 4999</b> — 5%, <b>5000 and above</b> — 10%. Build a test set: a total and the expected discount. Aim to cover every class and every boundary from both sides without bloating the set.", total: "Order total", expected: "Expected discount", add: "Add test", hTotal: "Total", hExpected: "Expected", hResult: "Check", check: "Check the set", reset: "Reset", correct: "expectation correct", wrong: "expectation wrong: the rule gives", classes: ["Class: below 1000", "Class: 1000–4999", "Class: 5000 and above"], bounds: ["Boundary 999 | 1000", "Boundary 4999 | 5000"], both: "both sides", oneSide: "one side only", none: "not covered", perfect: "Excellent: every class and both sides of every boundary are covered, expectations are correct.", missing: "Missing: ", redundant: "The set can be smaller: several tests check the same thing.", wrongExp: "Some expectations are wrong — a test with a wrong expectation checks a different rule.", score: "Coverage" },
+    uz: { title: "Chegaraviy qiymatlar: chegirma qoidasi", rule: "Do‘kon buyurtma summasiga qarab chegirma beradi: <b>1000 dan kam</b> — chegirmasiz, <b>1000 dan 4999 gacha</b> — 5%, <b>5000 va undan ko‘p</b> — 10%. Testlar to‘plamini tuzing: summa va kutilgan chegirma. Maqsad — har bir sinf va har bir chegarani ikki tomondan qamrab olish, to‘plamni shishirmasdan.", total: "Buyurtma summasi", expected: "Kutilgan chegirma", add: "Test qo‘shish", hTotal: "Summa", hExpected: "Kutilgan", hResult: "Tekshiruv", check: "To‘plamni tekshirish", reset: "Tozalash", correct: "kutilgan qiymat to‘g‘ri", wrong: "kutilgan qiymat noto‘g‘ri: qoida beradi", classes: ["Sinf: 1000 dan kam", "Sinf: 1000–4999", "Sinf: 5000 va ko‘p"], bounds: ["Chegara 999 | 1000", "Chegara 4999 | 5000"], both: "ikkala tomon", oneSide: "faqat bir tomon", none: "qamralmagan", perfect: "A’lo: har bir sinf va har bir chegaraning ikki tomoni qamrab olingan, kutilgan qiymatlar to‘g‘ri.", missing: "Yetishmaydi: ", redundant: "To‘plamni qisqartirish mumkin: bir nechta test bir narsani tekshiradi.", wrongExp: "Noto‘g‘ri kutilgan qiymatlar bor — bunday test boshqa qoidani tekshiradi.", score: "Qamrov" },
+  };
+  const params = new URLSearchParams(location.search);
+  const t = T[params.get("lang")] || T.ru;
+  if (params.get("theme") === "light") document.documentElement.dataset.theme = "light";
+
+  const $ = (id) => document.getElementById(id);
+  $("title").textContent = t.title;
+  $("rule").innerHTML = t.rule; // static, trusted text from this file
+  $("l-total").textContent = t.total;
+  $("l-expected").textContent = t.expected;
+  $("b-add").textContent = t.add;
+  $("h-total").textContent = t.hTotal;
+  $("h-expected").textContent = t.hExpected;
+  $("h-result").textContent = t.hResult;
+  $("check").textContent = t.check;
+  $("reset").textContent = t.reset;
+
+  const discount = (total) => (total >= 5000 ? 10 : total >= 1000 ? 5 : 0);
+  const classOf = (total) => (total >= 5000 ? 2 : total >= 1000 ? 1 : 0);
+  let cases = [];
+
+  function render() {
+    const body = $("cases");
+    body.replaceChildren();
+    cases.forEach((c, i) => {
+      const tr = document.createElement("tr");
+      const ok = discount(c.total) === c.expected;
+      const cells = [String(c.total), c.expected + "%", ok ? t.correct : `${t.wrong} ${discount(c.total)}%`];
+      cells.forEach((text, k) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (k === 2) td.className = ok ? "ok" : "bad";
+        tr.appendChild(td);
+      });
+      const td = document.createElement("td");
+      const x = document.createElement("button");
+      x.className = "x";
+      x.textContent = "×";
+      x.setAttribute("aria-label", "remove");
+      x.onclick = () => { cases.splice(i, 1); render(); };
+      td.appendChild(x);
+      tr.appendChild(td);
+      body.appendChild(tr);
+    });
+  }
+
+  // The frame is sandboxed without `allow-forms`: no <form> submission.
+  function addCase() {
+    const total = Math.floor(Number($("total").value));
+    if (!Number.isFinite(total) || total < 0 || total > 100000) return;
+    if (cases.length >= 30) return;
+    cases.push({ total, expected: Number($("expected").value) });
+    $("total").value = "";
+    render();
+  }
+  $("b-add").addEventListener("click", addCase);
+  $("total").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addCase(); } });
+  $("reset").onclick = () => { cases = []; render(); $("report").hidden = true; };
+
+  $("check").onclick = () => {
+    const has = (v) => cases.some((c) => c.total === v);
+    const classes = [0, 1, 2].map((k) => cases.some((c) => classOf(c.total) === k));
+    const bounds = [[999, 1000], [4999, 5000]].map(([a, b]) => (has(a) ? 1 : 0) + (has(b) ? 1 : 0));
+    const correct = cases.filter((c) => discount(c.total) === c.expected).length;
+    const exactness = cases.length ? correct / cases.length : 0;
+    const coverage = (classes.filter(Boolean).length + bounds.reduce((s, x) => s + x, 0)) / 7;
+    const score = Math.round(100 * coverage * exactness);
+    const completed = coverage === 1 && exactness === 1;
+
+    $("score").textContent = `${t.score}: ${score}%`;
+    const grid = $("coverage");
+    grid.replaceChildren();
+    classes.forEach((ok, k) => {
+      const d = document.createElement("div");
+      d.className = "chip" + (ok ? " done" : "");
+      d.textContent = `${t.classes[k]} — ${ok ? "✓" : t.none}`;
+      grid.appendChild(d);
+    });
+    bounds.forEach((n, k) => {
+      const d = document.createElement("div");
+      d.className = "chip" + (n === 2 ? " done" : "");
+      d.textContent = `${t.bounds[k]} — ${n === 2 ? t.both : n === 1 ? t.oneSide : t.none}`;
+      grid.appendChild(d);
+    });
+    const advice = [];
+    if (completed) advice.push(t.perfect);
+    else {
+      const missing = [];
+      classes.forEach((ok, k) => { if (!ok) missing.push(t.classes[k]); });
+      bounds.forEach((n, k) => { if (n < 2) missing.push(t.bounds[k]); });
+      if (missing.length) advice.push(t.missing + missing.join(", "));
+      if (exactness < 1) advice.push(t.wrongExp);
+    }
+    if (cases.length > 9) advice.push(t.redundant);
+    $("advice").textContent = advice.join(" ");
+    $("report").hidden = false;
+
+    // Limited protocol with the platform: progress and size, nothing else.
+    window.parent.postMessage({ type: "est:progress", version: 1, score, completed }, "*");
+  };
+  // Let the platform size the frame to the content.
+  const report = () => window.parent.postMessage({ type: "est:resize", version: 1, height: document.documentElement.scrollHeight }, "*");
+  new ResizeObserver(report).observe(document.body);
+  report();
+})();
+</script>
+</body>
+</html>

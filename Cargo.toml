@@ -1,0 +1,54 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/MisanaProger/Engineer-Craft"
+rust-version = "1.85"
+
+[workspace.dependencies]
+est-core = { path = "crates/est-core" }
+est-domain = { path = "crates/est-domain" }
+est-application = { path = "crates/est-application" }
+est-api = { path = "crates/est-api" }
+est-storage = { path = "crates/est-storage" }
+est-git = { path = "crates/est-git" }
+est-projects = { path = "crates/est-projects" }
+est-exercises = { path = "crates/est-exercises" }
+est-workspace = { path = "crates/est-workspace" }
+est-languages = { path = "crates/est-languages" }
+est-ai-policy = { path = "crates/est-ai-policy" }
+est-documentation = { path = "crates/est-documentation" }
+est-ai = { path = "crates/est-ai" }
+est-sandbox = { path = "crates/est-sandbox" }
+est-learning = { path = "crates/est-learning" }
+est-dependency = { path = "crates/est-dependency" }
+est-discipline = { path = "crates/est-discipline" }
+
+anyhow = "1"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = { version = "0.3", default-features = false }
+globset = "0.4"
+include_dir = "0.7"
+http-body-util = "0.1"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "json"] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+toml = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+uuid = { version = "1", features = ["v4", "serde"] }

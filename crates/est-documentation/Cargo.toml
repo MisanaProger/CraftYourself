@@ -1,0 +1,10 @@
+[package]
+name = "est-documentation"
+description = "Documentation Router: precise links to primary sources"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+url.workspace = true

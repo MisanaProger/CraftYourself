@@ -1,0 +1,17 @@
+[package]
+name = "est-sandbox"
+description = "Sandbox Manager: isolated build/test runs in Docker or Podman containers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+est-application.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["process", "time", "io-util"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
