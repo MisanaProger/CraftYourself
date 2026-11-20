@@ -21,6 +21,7 @@ use serde_json::json;
 
 use crate::ports::{ChatMessage, LlmRequest};
 use crate::service::blocking;
+use crate::streaming::AnswerStream;
 use crate::{App, AppError, AppResult};
 
 const MAX_SOURCE_LINKS: usize = 5;
@@ -569,19 +570,34 @@ impl App {
                 ),
             });
         }
-        let response = llm
-            .generate(LlmRequest {
-                system: system_prompt(task, decision),
-                messages,
-                // A page needs room; the policy decides whether one is allowed.
-                max_tokens: if decision.constraints.max_pages > 0 {
-                    3000
-                } else {
-                    900
-                },
-                temperature: 0.3,
-            })
-            .await?;
+        let stream = AnswerStream::start(
+            self.ports.publisher.clone(),
+            &c.id,
+            &user.id,
+            decision.level.as_u8(),
+        );
+        let sink = |delta: &str| stream.push(delta);
+        let request = LlmRequest {
+            system: system_prompt(task, decision),
+            messages,
+            // A page needs room; the policy decides whether one is allowed.
+            max_tokens: if decision.constraints.max_pages > 0 {
+                3000
+            } else {
+                900
+            },
+            temperature: 0.3,
+        };
+        let response = match llm.generate_stream(request, &sink).await {
+            Ok(r) => {
+                stream.finish();
+                r
+            }
+            Err(e) => {
+                stream.fail();
+                return Err(e);
+            }
+        };
 
         let mut msg = Message::new(
             &c.id,

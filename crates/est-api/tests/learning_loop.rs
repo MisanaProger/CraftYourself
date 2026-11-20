@@ -1752,3 +1752,59 @@ async fn session_summaries_and_knowledge_profile() {
     assert_eq!(rebuilt["runs"]["test_runs"], 2);
     assert_eq!(rebuilt["commits"], 1);
 }
+
+#[tokio::test]
+async fn mentor_answers_stream_without_code() {
+    let h = harness().await;
+    let pid = h.new_project().await["id"].as_str().unwrap().to_owned();
+    let tid = h.task(&pid, "Include the upper bound").await;
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let mut rx = h.rt.events.subscribe();
+
+    // At L0 the model's code block is cut by the policy; the live stream
+    // must not have shown it either.
+    let r = h
+        .say(
+            &conv,
+            "I checked that the empty string comes from the config. What next?",
+        )
+        .await;
+    let content = r[0]["content"].as_str().unwrap();
+    assert!(content.contains("last element") && !content.contains("let a"));
+
+    let mut live = Vec::new();
+    while let Ok(e) = rx.try_recv() {
+        if e.kind.starts_with("ai.answer.") {
+            assert_eq!(
+                e.conversation_id.as_ref().map(|c| c.as_str()),
+                Some(conv.as_str())
+            );
+            live.push(e);
+        }
+    }
+    let kinds: Vec<&str> = live.iter().map(|e| e.kind.as_str()).collect();
+    assert_eq!(kinds.first(), Some(&"ai.answer.started"));
+    assert_eq!(kinds.last(), Some(&"ai.answer.finished"));
+    let user_id = live[0].payload["in_reply_to"].clone();
+    assert!(live.iter().all(|e| e.payload["in_reply_to"] == user_id));
+    let text: String = live
+        .iter()
+        .filter_map(|e| e.payload["text"].as_str())
+        .collect();
+    assert_eq!(text, "What happens with the last element?\n");
+    assert_eq!(
+        live.iter()
+            .filter(|e| e.payload["withheld"] == "code")
+            .count(),
+        1
+    );
+    assert!(!format!("{live:?}").contains("let a"));
+
+    // Deltas are not observations: they are not in the event log.
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    let logged = export["events"].to_string();
+    assert!(logged.contains("ai.answer") && !logged.contains("ai.answer.delta"));
+}

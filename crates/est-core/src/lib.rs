@@ -136,6 +136,11 @@ pub mod events {
     pub const CONVERSATION_DELETED: &str = "conversation.deleted";
     pub const DOCS_REDIRECT: &str = "documentation.redirect";
     pub const AI_ANSWER: &str = "ai.answer";
+    /// Live answer stream, pushed to clients only (never logged).
+    pub const AI_ANSWER_STARTED: &str = "ai.answer.started";
+    pub const AI_ANSWER_DELTA: &str = "ai.answer.delta";
+    pub const AI_ANSWER_FINISHED: &str = "ai.answer.finished";
+    pub const AI_ANSWER_FAILED: &str = "ai.answer.failed";
     /// The learner connected, switched or disconnected an AI provider.
     pub const AI_PROVIDER_CHANGED: &str = "ai.provider.changed";
     pub const ENGAGEMENT_INITIALIZED: &str = "engagement.level.initialized";
