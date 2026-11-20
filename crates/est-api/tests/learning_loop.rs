@@ -19,11 +19,12 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-/// Records requests; always answers with a question and a code block, so
-/// the policy's code limits can be observed.
+/// Records requests; answers with a question and a code block (or `reply`,
+/// when set), so the policy's code limits can be observed.
 #[derive(Default)]
 struct FakeLlm {
     requests: Mutex<Vec<LlmRequest>>,
+    reply: Mutex<Option<String>>,
 }
 
 #[async_trait::async_trait]
@@ -39,9 +40,11 @@ impl LlmProvider for FakeLlm {
 
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse> {
         self.requests.lock().unwrap().push(request);
+        let content = self.reply.lock().unwrap().clone().unwrap_or_else(|| {
+            "What happens with the last element?\n```rust\nlet a = 1;\nlet b = 2;\n```".into()
+        });
         Ok(LlmResponse {
-            content: "What happens with the last element?\n```rust\nlet a = 1;\nlet b = 2;\n```"
-                .into(),
+            content,
             model: "fake-1".into(),
         })
     }
@@ -1038,4 +1041,87 @@ async fn testing_program() {
     assert_eq!(tiles[0]["completed"], 4);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["learning_progress"].as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn mentor_html_pages_from_l2() {
+    let h = harness().await;
+    let (_, c) = h.post("/api/v1/conversations", json!({})).await;
+    let conv = c["id"].as_str().unwrap();
+    *h.llm.reply.lock().unwrap() = Some(
+        "A heap keeps the minimum on top: $a_i \\le a_{2i+1}$.\n```html\n<!DOCTYPE html><html><body>heap</body></html>\n```\nWhy?"
+            .into(),
+    );
+    let page_status = |mid: String, n: usize| {
+        let h = &h;
+        async move {
+            h.get(&format!(
+                "/api/v1/conversations/{conv}/messages/{mid}/pages/{n}"
+            ))
+            .await
+            .0
+        }
+    };
+
+    // Below L2 a page is removed even for a concept; the rest stays.
+    let replies = h.say(conv, "What is a binary heap?").await;
+    let m = &replies[0];
+    assert_eq!(m["role"], "assistant", "{m}");
+    let text = m["content"].as_str().unwrap();
+    assert!(
+        !text.contains("```html") && text.contains("$a_i") && text.ends_with("Why?"),
+        "{text}"
+    );
+    assert_eq!(m["cards"][0]["code"], "page_removed");
+    assert_eq!(m["meta"]["pages"], 0);
+    assert_eq!(
+        page_status(m["id"].as_str().unwrap().into(), 0).await,
+        StatusCode::NOT_FOUND
+    );
+    let system = h.llm.requests.lock().unwrap()[0].system.clone();
+    assert!(
+        system.contains("LaTeX") && system.contains("недоступны"),
+        "{system}"
+    );
+
+    // The learner raises the level to L2 step by step.
+    for _ in 0..2 {
+        h.post(
+            &format!("/api/v1/conversations/{conv}/engagement/raise"),
+            json!({}),
+        )
+        .await;
+    }
+    assert_eq!(h.level(conv).await, 2);
+    let replies = h.say(conv, "What is a binary heap?").await;
+    let m = &replies[0];
+    assert_eq!(m["meta"]["pages"], 1, "{m}");
+    assert!(m["content"].as_str().unwrap().contains("```html"));
+    let mid = m["id"].as_str().unwrap().to_owned();
+    let req = Request::get(format!(
+        "/api/v1/conversations/{conv}/messages/{mid}/pages/0"
+    ))
+    .header("host", "localhost:7878")
+    .body(Body::empty())
+    .unwrap();
+    let res = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let csp = res.headers()["content-security-policy"].to_str().unwrap();
+    assert!(csp.starts_with("sandbox allow-scripts;") && !csp.contains("allow-same-origin"));
+    assert!(csp.contains("connect-src 'none'"));
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    // The compatibility layer runs before the page's own content.
+    assert!(body.starts_with("<!DOCTYPE html><html><script>"), "{body}");
+    assert_eq!(page_status(mid, 1).await, StatusCode::NOT_FOUND);
+    let system = h
+        .llm
+        .requests
+        .lock()
+        .unwrap()
+        .last()
+        .unwrap()
+        .system
+        .clone();
+    assert!(system.contains("```html"));
 }

@@ -9,6 +9,7 @@ use crate::runtime::Runtime;
 
 mod analytics;
 mod conversations;
+mod isolated;
 mod learning;
 mod llm;
 mod projects;
@@ -54,6 +55,10 @@ pub fn api() -> Router<Runtime> {
         .route(
             "/conversations/{id}/messages",
             get(conversations::messages).post(conversations::post_message),
+        )
+        .route(
+            "/conversations/{id}/messages/{message}/pages/{n}",
+            get(conversations::page),
         )
         .route(
             "/conversations/{id}/engagement",

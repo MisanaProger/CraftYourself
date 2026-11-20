@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::{StatusCode, header};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use est_application::StartedSession;
 use est_application::learning::{LessonView, ProgramTile, ProgramView, normalize_lang};
@@ -112,28 +112,10 @@ pub async fn practice(
     ))
 }
 
-/// Serves an artifact file as an isolated document: the CSP `sandbox`
-/// directive gives it an opaque origin (no access to the platform's API,
-/// cookies or storage, even when opened directly), and it may not load
-/// anything from the network.
+/// Serves an artifact file as an isolated document (see [`super::isolated`]).
 pub async fn artifact_file(Path((id, path)): Path<(String, String)>) -> Response {
     match est_learning::artifact_file(&id, &path) {
-        Ok((bytes, mime)) => (
-            [
-                (header::CONTENT_TYPE, mime),
-                (
-                    header::CONTENT_SECURITY_POLICY,
-                    "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; \
-                     style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; \
-                     form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
-                ),
-                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-                (header::REFERRER_POLICY, "no-referrer"),
-                (header::CACHE_CONTROL, "no-cache"),
-            ],
-            bytes,
-        )
-            .into_response(),
+        Ok((bytes, mime)) => super::isolated::document(bytes, mime),
         Err(e) => ApiError(e.into()).into_response(),
     }
 }
