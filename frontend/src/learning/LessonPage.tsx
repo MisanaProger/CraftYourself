@@ -17,6 +17,7 @@ function useRefreshLearning() {
     qc.invalidateQueries({ queryKey: ["program"] });
     qc.invalidateQueries({ queryKey: ["programs"] });
     qc.invalidateQueries({ queryKey: ["lesson"] });
+    qc.invalidateQueries({ queryKey: ["skills"] });
   };
 }
 

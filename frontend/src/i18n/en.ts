@@ -343,7 +343,7 @@ export const en = {
   "factor.test_runs": "own test runs: {n}",
   "factor.rejected_escalations": "declined level raises: {n}",
   "esm.subtitle": "Growth by individual discipline. Independent of ADI and never reduced to a single rating.",
-  "esm.note": "Skill assessment from evidence arrives later. For now every skill is “not assessed”: no data is not the same as zero.",
+  "esm.note": "Assessed from observed evidence only: quiz attempts, artifact results, completed practice and Issues (tests, acceptance criteria, help levels). Reading is not evidence, the ADI is not used, and a skill without evidence is “not assessed”, never zero.",
   "esm.fundamental": "Fundamental disciplines",
   "esm.engineering": "Engineering disciplines",
   "esm.skills": "{n} skills",
@@ -470,6 +470,19 @@ export const en = {
   "signal.own_commits": "own commits",
   "signal.no_commits": "no commits",
   "signal.abandoned": "abandoned",
+  "esm.evidence": "evidence: {n}",
+  "esm.dimensions": "Dimensions",
+  "esm.history": "Evidence history ({n})",
+  "esm.wholeDiscipline": "whole discipline",
+  "dimension.theory": "Theory",
+  "dimension.practice": "Practice",
+  "dimension.diagnosis": "Diagnosis",
+  "dimension.transfer": "Transfer",
+  "dimension.independence": "Independence",
+  "source.quiz": "quiz",
+  "source.artifact": "trainer",
+  "source.practice": "practice",
+  "source.issue": "Issue",
 };
 
 export type Key = keyof typeof en;

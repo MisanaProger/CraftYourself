@@ -210,14 +210,43 @@ export interface AdiOverview {
 
 export type AssessmentStatus = "not_assessed" | "insufficient_evidence" | "provisional" | "established" | "needs_reassessment";
 
-export interface MatrixDiscipline {
+export type Dimension = "theory" | "practice" | "diagnosis" | "transfer" | "independence";
+export type EvidenceSource = "quiz" | "artifact" | "practice" | "issue";
+
+/** Assessment of a skill or discipline from observed evidence; no data is not zero. */
+export interface Assessment {
+  status: AssessmentStatus;
+  score: number | null;
+  confidence: "low" | "medium" | "high" | null;
+  evidence_count: number;
+  dimensions: { dimension: Dimension; score: number; evidence_count: number }[];
+  last_observed: string | null;
+}
+
+export interface Evidence {
+  discipline: string;
+  skill: string | null;
+  source: EvidenceSource;
+  dimension: Dimension;
+  score: number;
+  reference: string;
+  title: string;
+  observed_at: string;
+}
+
+export interface MatrixSkill extends Assessment {
+  id: string;
+  name: string;
+}
+
+export interface MatrixDiscipline extends Assessment {
   id: string;
   name: string;
   group: "fundamental" | "engineering";
-  status: AssessmentStatus;
-  score: number | null;
   practice_tasks: number;
-  skills: { id: string; name: string; status: AssessmentStatus; score: number | null; evidence_count: number }[];
+  skills: MatrixSkill[];
+  /** Newest first. */
+  history: Evidence[];
 }
 
 export interface SkillMatrix {

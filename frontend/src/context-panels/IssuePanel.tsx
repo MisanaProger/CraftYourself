@@ -77,7 +77,7 @@ export function IssuePanel({ task, session, onAsk }: { task: Task | null; sessio
   const complete = useMutation({
     mutationFn: () => api.completeTask(task!.id),
     onSuccess: () => {
-      for (const k of ["sessions", "tasks", "adi", "program", "programs", "knowledge", "summary"]) qc.invalidateQueries({ queryKey: [k] });
+      for (const k of ["sessions", "tasks", "adi", "program", "programs", "knowledge", "summary", "skills"]) qc.invalidateQueries({ queryKey: [k] });
       qc.invalidateQueries({ queryKey: ["session", session?.id] });
     },
   });

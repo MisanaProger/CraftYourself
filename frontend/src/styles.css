@@ -507,3 +507,10 @@ a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
 .chip.warn, .chip.standing-needs_practice { color: var(--warn); border-color: currentColor; }
 .summary-panel { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .session-summary .kv { margin: 0.6rem 0 0; }
+
+/* Skill Matrix evidence */
+.discipline-body { padding: 0 1.15rem; }
+.discipline .evidence { padding: 0 1.15rem 1rem; }
+.discipline .evidence summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+.discipline .evidence li { padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
+.discipline .evidence p { margin: 0.15rem 0 0; }
