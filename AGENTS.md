@@ -27,6 +27,9 @@ crates/
   est-ai             OpenAI-compatible LLM provider
   est-api            Axum REST /api/v1, WebSocket, composition root (runtime.rs)
   est-cli            `est` binary
+apps/desktop/        Tauri 2 desktop app (separate workspace): runs the daemon
+                     in-process on a loopback port and shows it in a window;
+                     the frontend is embedded; no Tauri IPC is exposed
 frontend/            React + TypeScript + Vite (src/i18n, chat, learning, …)
 learning-artifacts/  programs, lessons, quizzes, artifacts, practice templates
 exercises/examples/  Exercise Manifests
@@ -47,10 +50,14 @@ cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --all
 cd frontend && npm ci && npm run build                  # tsc + vite; must pass
 EST_SANDBOX_IT=1 cargo test -p est-sandbox              # needs Docker/Podman
+cd apps/desktop && cargo clippy -- -D warnings          # needs WebKitGTK + built frontend
 ```
 
-Run the app: `cargo run -p est-cli -- serve` with `EST_HOME=/tmp/est-dev` and
-`EST_FRONTEND_DIR=frontend/dist`.
+Run the app: `cargo run --manifest-path apps/desktop/Cargo.toml` (desktop), or
+`cargo run -p est-cli -- serve` with `EST_HOME=/tmp/est-dev` and
+`EST_FRONTEND_DIR=frontend/dist` (browser). Both use the same daemon; keep the
+desktop window free of Tauri IPC — features go through the HTTP API so the
+browser build keeps working.
 
 ## Rules that must not be broken
 

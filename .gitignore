@@ -6,3 +6,7 @@
 frontend/node_modules
 frontend/dist
 frontend/*.tsbuildinfo
+
+# Tauri desktop app
+/apps/desktop/target
+/apps/desktop/gen

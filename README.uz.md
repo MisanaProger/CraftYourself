@@ -62,6 +62,7 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   bog‘liqlik indeksi kuzatilgan hodisalar asosida hisoblanadi va ikki marta
   so‘nish bilan o‘rtachalanadi (30 kun / 10 Issue). Engineering Skill Matrix
   tekshirilmagan ko‘nikmani 0 emas, «baholanmagan» deb ko‘rsatadi. Ular mustaqil.
+- **Desktop ilova (Tauri)** Linux, Windows va macOS uchun; xuddi shu interfeys brauzerda ham ishlaydi.
 - **Interfeys rus, ingliz va o‘zbek tillarida**; qorong‘i va yorug‘ mavzular.
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
   suhbatni hodisalari va vazifa ADI’si bilan birga o‘chirish.
@@ -72,19 +73,24 @@ ko‘nikmalarni baholash, kommit va PR tekshiruvi, qolgan o‘quv dasturlari.
 
 ## Tez boshlash
 
-Rust ≥ 1.85, `git`, Node.js 22 (interfeys uchun) va testlarni sandboxda
-ishga tushirish uchun Podman yoki Docker kerak.
+Craft Yourself — [Tauri](https://tauri.app) asosidagi **desktop ilova**: bitta
+oyna ichida mahalliy demon (ma’lumotlar bazasi, sandbox, mentor) va interfeys.
+Rust ≥ 1.90, `git`, Node.js 22 va testlarni sandboxda ishga tushirish uchun
+Podman yoki Docker kerak. Linux’da Tauri uchun WebKitGTK ham kerak:
+`sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev`.
 
 ```sh
-cargo build --release
-(cd frontend && npm ci && npm run build)
-
-./target/release/est init                    # ~/.est va config.toml
-./target/release/est serve                   # http://127.0.0.1:7878
+(cd frontend && npm ci && npm run build)          # interfeys ilovaga joylashtiriladi
+cargo run --release --manifest-path apps/desktop/Cargo.toml
 ```
 
-Manzilni oching, bosh sahifada «Testlar» dasturini tanlang va birinchi
-darsdan boshlang. Modelni `~/.est/config/config.toml` faylida ulang:
+O‘rnatuvchilar (`.deb`, `.AppImage`, `.msi`, `.dmg`): `cargo install tauri-cli --version "^2"`,
+so‘ng `apps/desktop` ichida `cargo tauri build`.
+
+Bosh sahifada «Testlar» dasturini tanlang va birinchi darsdan boshlang.
+
+Grafik seanssiz (server, WSL) xuddi shu demon interfeysni brauzerga beradi:
+`cargo run -p est-cli -- serve` → http://127.0.0.1:7878. Modelni `~/.est/config/config.toml` faylida ulang:
 
 ```toml
 [llm]
@@ -114,6 +120,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cd frontend && npm run dev           # http://localhost:5173 → API :7878 da
+cd apps/desktop && cargo clippy -- -D warnings   # desktop ilova (WebKitGTK kerak)
 EST_SANDBOX_IT=1 cargo test -p est-sandbox   # haqiqiy konteynerda izolyatsiya testi
 ```
 

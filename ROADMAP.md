@@ -17,6 +17,7 @@ Craft Yourself follows the stages of spec v0.3 (`docs/architecture.md`).
 | 7. ADI & Skill Matrix | ◐ | ADI from observed events with double decay; ESM catalog. ◯ evidence-based skill assessment, model-assisted ADI |
 | 8. Interactive Learning | ◐ | Programs, lessons, quizzes, sandboxed artifacts, practice projects. ◯ more programs, embedded components |
 | 9. Git Workflow & Analytics | ◯ | Commit quality review, PR preparation, Issue review |
+| Desktop app | ◐ | Tauri 2 window with the embedded daemon and interface. ◯ signed installers, auto-update, tray, testing on Windows/macOS |
 
 ## Next
 
