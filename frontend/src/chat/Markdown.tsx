@@ -1,19 +1,30 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
+import { IsolatedFrame } from "../ui/IsolatedFrame";
 
 /**
  * Minimal, safe Markdown renderer for mentor messages and lessons: headings,
  * fenced code blocks, tables, paragraphs, lists, inline code, bold, italics
  * and LaTeX formulas. Text is rendered as React text nodes — no HTML from the
  * model ever reaches this page's DOM. Formulas are built by KaTeX as DOM
- * nodes (`trust: false`: no links, classes, styles or raw HTML).
+ * nodes (`trust: false`: no links, classes, styles or raw HTML). An HTML page
+ * from the model (a ```html block) is never inserted here: with `pageUrl` it
+ * is loaded from the server into an isolated frame.
  */
 const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
 const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 const BLOCK_START = /^\s*(```|#{1,4}\s|([-*]|\d+\.)\s+|\||\$\$|\\\[)/;
 
-export function Markdown({ text }: { text: string }) {
+interface Props {
+  text: string;
+  /** URL of the n-th ```html block served as an isolated document. */
+  pageUrl?: (n: number) => string;
+}
+
+export function Markdown({ text, pageUrl }: Props) {
   const blocks: ReactNode[] = [];
   const lines = text.split("\n");
+  let pages = 0;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -23,7 +34,16 @@ export function Markdown({ text }: { text: string }) {
       i++;
       while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
       i++;
-      blocks.push(<CodeBlock key={blocks.length} lang={fence[1]} code={code.join("\n")} />);
+      const lang = fence[1].toLowerCase();
+      // Numbered like the server does: every ```html block, in order.
+      const page = lang === "html" ? pages++ : -1;
+      blocks.push(
+        page >= 0 && pageUrl ? (
+          <HtmlPage key={blocks.length} src={pageUrl(page)} code={code.join("\n")} />
+        ) : (
+          <CodeBlock key={blocks.length} lang={fence[1]} code={code.join("\n")} />
+        ),
+      );
       continue;
     }
     const math = line.trim().match(/^(\$\$|\\\[)(.*)$/);
@@ -191,5 +211,31 @@ function Tex({ tex, display = false }: { tex: string; display?: boolean }) {
       {!ready && <code className="math-src">{tex}</code>}
       <span ref={target} />
     </Tag>
+  );
+}
+
+/** A ```html block from the model: preview in an isolated frame, or source. */
+function HtmlPage({ src, code }: { src: string; code: string }) {
+  const { t } = useT();
+  const [source, setSource] = useState(false);
+  return (
+    <div className="html-page">
+      <div className="html-page-bar" role="tablist">
+        <button role="tab" aria-selected={!source} className="small" onClick={() => setSource(false)}>
+          {t("md.preview")}
+        </button>
+        <button role="tab" aria-selected={source} className="small" onClick={() => setSource(true)}>
+          {t("md.source")}
+        </button>
+      </div>
+      {source ? (
+        <CodeBlock lang="html" code={code} />
+      ) : (
+        <>
+          <IsolatedFrame src={src} title="HTML" initialHeight={360} className="artifact page-frame" />
+          <p className="muted small">{t("md.pageNote")}</p>
+        </>
+      )}
+    </div>
   );
 }

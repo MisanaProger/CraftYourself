@@ -461,3 +461,8 @@ pre.output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 
 .math-display { display: block; overflow-x: auto; overflow-y: hidden; margin: 0.6rem 0; }
 .math-src { white-space: pre-wrap; }
 .math .katex-display { margin: 0; }
+.html-page { margin: 0.5rem 0; }
+.html-page-bar { display: flex; gap: 0.3rem; margin-bottom: 0.4rem; }
+.html-page-bar button { background: transparent; border-color: transparent; }
+.html-page-bar button[aria-selected="true"] { border-color: var(--border); background: var(--surface-2); }
+iframe.page-frame { height: 360px; }

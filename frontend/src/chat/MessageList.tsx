@@ -1,6 +1,8 @@
 import { LogoMark } from "../app/Logo";
+import { useTheme } from "../app/theme";
 import { EscalationCard } from "../escalation/EscalationCard";
 import { useT, type Key } from "../i18n";
+import { pages } from "../services/api";
 import type { Card, Message } from "../types/api";
 import { levelName, tv, useFormat } from "../ui";
 import { Markdown } from "./Markdown";
@@ -66,8 +68,15 @@ function systemText(t: (k: Key, v?: Record<string, string | number>) => string, 
   return m.content;
 }
 
+/** Pages of an answer that passed the policy; the server serves no others. */
+function allowedPages(m: Message): number {
+  const n = (m.meta as { pages?: unknown } | null)?.pages;
+  return m.role === "assistant" && typeof n === "number" ? n : 0;
+}
+
 export function MessageList({ messages, pending, busy, onAccept, onReject, onSaveCriteria }: Props) {
   const { t } = useT();
+  const { theme } = useTheme();
   const fmt = useFormat();
   return (
     <ol className="timeline" aria-live="polite">
@@ -97,7 +106,11 @@ export function MessageList({ messages, pending, busy, onAccept, onReject, onSav
                 {m.role !== "user" && <span className="lvl">L{m.level}</span>}
               </div>
               <div className="bubble">
-                {m.role === "user" ? <p className="pre">{m.content}</p> : text && <Markdown text={text} />}
+                {m.role === "user" ? (
+                  <p className="pre">{m.content}</p>
+                ) : (
+                  text && <Markdown text={text} pageUrl={allowedPages(m) > 0 ? (n) => pages.message(m.conversation_id, m.id, n, theme) : undefined} />
+                )}
                 {m.cards.map((c, k) =>
                   c.type === "sources" ? (
                     <Sources key={k} links={c.links} />
