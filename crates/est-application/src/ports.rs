@@ -511,3 +511,52 @@ pub trait LessonResultRepository: Send + Sync {
     /// Oldest first.
     async fn lesson_results(&self, user: &UserId) -> AppResult<Vec<LessonResult>>;
 }
+
+// ---- forges and judges -------------------------------------------------------
+
+/// A problem read from a judge, for the learner to review before importing.
+#[derive(Debug, Clone, Serialize)]
+pub struct FetchedProblem {
+    pub input: est_problems::ProblemInput,
+    /// The statement itself was read (not only the title and tags).
+    pub statement_found: bool,
+}
+
+/// Reading from and publishing to code forges and online judges. The
+/// application calls it only after `est_ai_policy::gates` allowed the action.
+#[async_trait]
+pub trait RemoteSources: Send + Sync {
+    /// An Issue and its repository.
+    async fn issue(&self, issue: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue>;
+    /// A problem's statement, samples and metadata.
+    async fn problem(&self, problem: &est_problems::ProblemRef) -> AppResult<FetchedProblem>;
+    /// Whether a token for publishing to `host` is configured.
+    fn can_publish(&self, issue: &est_issues::IssueRef) -> bool;
+    /// Publishes a comment on the Issue; returns the comment's link.
+    async fn comment(&self, issue: &est_issues::IssueRef, body: &str) -> AppResult<String>;
+}
+
+/// Used when nothing is configured: every call fails.
+pub struct NoRemote;
+
+#[async_trait]
+impl RemoteSources for NoRemote {
+    async fn issue(&self, _: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue> {
+        Err(crate::AppError::Invalid(
+            "reading Issues is not configured".into(),
+        ))
+    }
+    async fn problem(&self, _: &est_problems::ProblemRef) -> AppResult<FetchedProblem> {
+        Err(crate::AppError::Invalid(
+            "reading problems is not configured".into(),
+        ))
+    }
+    fn can_publish(&self, _: &est_issues::IssueRef) -> bool {
+        false
+    }
+    async fn comment(&self, _: &est_issues::IssueRef, _: &str) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "publishing is not configured".into(),
+        ))
+    }
+}

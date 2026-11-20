@@ -535,6 +535,7 @@ dependencies = [
  "est-documentation",
  "est-domain",
  "est-exercises",
+ "est-issues",
  "est-learning",
  "est-problems",
  "serde",
@@ -686,6 +687,23 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "est-remote"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "est-application",
+ "est-issues",
+ "est-problems",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -14,6 +14,7 @@ est-domain.workspace = true
 est-exercises.workspace = true
 est-learning.workspace = true
 est-problems.workspace = true
+est-issues.workspace = true
 est-dependency.workspace = true
 est-discipline.workspace = true
 serde.workspace = true
