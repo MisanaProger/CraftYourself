@@ -39,6 +39,7 @@ pub struct Ports {
     pub sandbox: Arc<dyn Sandbox>,
     pub sandbox_runs: Arc<dyn SandboxRunRepository>,
     pub learning: Arc<dyn LearningProgressRepository>,
+    pub generated: Arc<dyn GeneratedProgramRepository>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -109,6 +110,8 @@ impl App {
         let user = ports.users.local_user().await?;
         // Runs cannot survive a daemon restart; record them as failed.
         ports.sandbox_runs.fail_interrupted().await?;
+        // So are program generations.
+        ports.generated.fail_interrupted_generations().await?;
         Ok(Self {
             ports,
             settings,

@@ -19,12 +19,46 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-/// Records requests; answers with a question and a code block (or `reply`,
-/// when set), so the policy's code limits can be observed.
+/// Records requests; answers chat messages with a question and a code
+/// block (or `reply`, when set), so the policy's code limits can be
+/// observed. Program generation requests get content of the asked kind.
 #[derive(Default)]
 struct FakeLlm {
     requests: Mutex<Vec<LlmRequest>>,
     reply: Mutex<Option<String>>,
+}
+
+fn generated_content(system: &str, attempt: usize) -> Option<String> {
+    let text = if system.starts_with("You design short self-study programs") {
+        // The first outline is malformed: the application retries once.
+        if attempt == 0 {
+            "Sure! Here is a plan.".to_owned()
+        } else {
+            json!({ "title": "Graphs", "summary": "BFS and DFS", "lessons": [
+                { "kind": "reading", "title": "What is a graph", "minutes": 10, "brief": "vertices" },
+                { "kind": "page", "title": "BFS step by step", "minutes": 15 },
+                { "kind": "quiz", "title": "Check yourself" },
+                { "kind": "reading", "title": "Not asked for" }
+            ]})
+            .to_string()
+        }
+    } else if system.starts_with("Write one lesson") {
+        format!(
+            "## Graphs\n\nA graph $G = (V, E)$ has vertices and edges.\n\n$$|E| \\le |V|^2$$\n\n{}",
+            "Text. ".repeat(60)
+        )
+    } else if system.starts_with("Write a multiple-choice quiz") {
+        json!({ "questions": [
+            { "text": "BFS uses a", "options": ["stack", "queue"], "answer": 1, "explanation": "FIFO" },
+            { "text": "DFS uses a", "options": ["stack", "queue"], "answer": 0, "explanation": "LIFO" }
+        ]})
+        .to_string()
+    } else if system.starts_with("Write one self-contained interactive HTML5 page") {
+        "```html\n<!DOCTYPE html><html><body><svg></svg></body></html>\n```".to_owned()
+    } else {
+        return None;
+    };
+    Some(text)
 }
 
 #[async_trait::async_trait]
@@ -39,10 +73,14 @@ impl LlmProvider for FakeLlm {
     }
 
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse> {
+        let attempt = request.messages.len() / 2;
+        let generated = generated_content(&request.system, attempt);
         self.requests.lock().unwrap().push(request);
-        let content = self.reply.lock().unwrap().clone().unwrap_or_else(|| {
-            "What happens with the last element?\n```rust\nlet a = 1;\nlet b = 2;\n```".into()
-        });
+        let content = generated
+            .or_else(|| self.reply.lock().unwrap().clone())
+            .unwrap_or_else(|| {
+                "What happens with the last element?\n```rust\nlet a = 1;\nlet b = 2;\n```".into()
+            });
         Ok(LlmResponse {
             content,
             model: "fake-1".into(),
@@ -1041,6 +1079,127 @@ async fn testing_program() {
     assert_eq!(tiles[0]["completed"], 4);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["learning_progress"].as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn generated_program() {
+    let h = harness().await;
+    let (s, e) = h
+        .post("/api/v1/learning/generated", json!({ "topic": "  " }))
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+    let (s, g) = h
+        .post(
+            "/api/v1/learning/generated",
+            json!({ "topic": "Graph search", "level": "beginner", "lessons": 3, "lang": "en" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED, "{g}");
+    let id = g["id"].as_str().unwrap().to_owned();
+    assert!(id.starts_with("gen-"));
+    assert_eq!(g["status"], "generating");
+
+    let mut g = g;
+    for _ in 0..200 {
+        g = h.get(&format!("/api/v1/learning/generated/{id}")).await.1;
+        if g["status"] != "generating" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(g["status"], "ready", "{g}");
+    assert_eq!(
+        (g["lessons_done"].as_u64(), g["lessons_total"].as_u64()),
+        (Some(3), Some(3))
+    );
+    assert_eq!(g["title"], "Graphs");
+    assert_eq!(g["model"], "fake/fake-1");
+    // Outline (rejected once, retried) + three lessons.
+    assert_eq!(h.llm_calls(), 5);
+    assert!(
+        h.llm.requests.lock().unwrap()[1].messages[2]
+            .content
+            .contains("rejected")
+    );
+
+    // It is a program like the bundled ones; lesson ids come from the code.
+    let (_, view) = h
+        .get(&format!("/api/v1/learning/programs/{id}?lang=ru"))
+        .await;
+    let kinds: Vec<_> = view["lessons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| (l["id"].as_str().unwrap(), l["kind"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [("l01", "reading"), ("l02", "page"), ("l03", "quiz")]
+    );
+    let base = format!("/api/v1/learning/programs/{id}/lessons");
+    let (_, l) = h.get(&format!("{base}/l01")).await;
+    assert!(
+        l["body"]["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("$G = (V, E)$")
+    );
+    h.post(&format!("{base}/l01/complete"), json!({})).await;
+
+    // The page is an isolated document with the resize reporter.
+    let req = Request::get(format!("{base}/l02/page"))
+        .header("host", "localhost:7878")
+        .body(Body::empty())
+        .unwrap();
+    let res = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(
+        res.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .starts_with("sandbox allow-scripts;")
+    );
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(
+        body.starts_with("<!DOCTYPE html>") && body.contains("est:resize"),
+        "{body}"
+    );
+    let (s, _) = h.get(&format!("{base}/l01/page")).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "not a page");
+    let (_, p) = h
+        .post(
+            &format!("{base}/l02/progress"),
+            json!({ "score": 80, "completed": true }),
+        )
+        .await;
+    assert_eq!(p["status"], "completed");
+
+    // The quiz is graded on the server; answers are not sent before.
+    let (_, l) = h.get(&format!("{base}/l03")).await;
+    assert!(!l["body"].to_string().contains("\"answer\""));
+    let (_, r) = h
+        .post(
+            &format!("{base}/l03/quiz"),
+            json!({ "answers": { "q1": 1, "q2": 0 } }),
+        )
+        .await;
+    assert_eq!(r["score"], 100);
+
+    let (_, list) = h.get("/api/v1/learning/generated").await;
+    assert_eq!(list[0]["completed"], 3);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    let exported = export["generated_programs"].to_string();
+    assert!(exported.contains("Graph search") && !exported.contains("\"answer\""));
+
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/learning/generated/{id}"), None)
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = h.get(&format!("/api/v1/learning/programs/{id}")).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["learning_progress"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]

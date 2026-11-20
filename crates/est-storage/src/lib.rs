@@ -9,8 +9,9 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
-    EventLog, LearningProgressRepository, LessonProgress, ProjectRepository, SandboxRunRepository,
-    SessionRepository, StoredEvent, TaskRepository, User, UserRepository,
+    EventLog, GeneratedProgramRecord, GeneratedProgramRepository, LearningProgressRepository,
+    LessonProgress, ProjectRepository, SandboxRunRepository, SessionRepository, StoredEvent,
+    TaskRepository, User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -1095,6 +1096,112 @@ impl LearningProgressRepository for SqliteStore {
     }
 }
 
+// ---- generated programs ------------------------------------------------------
+
+fn generated_from_row(r: &SqliteRow) -> AppResult<GeneratedProgramRecord> {
+    let content: Option<String> = r.get("content");
+    Ok(GeneratedProgramRecord {
+        id: r.get("id"),
+        topic: r.get("topic"),
+        lang: r.get("lang"),
+        level: parse_enum("program level", r.get("level"))?,
+        status: parse_enum("generation status", r.get("status"))?,
+        error: r.get("error"),
+        lessons_total: r.get::<i64, _>("lessons_total").max(0) as u32,
+        lessons_done: r.get::<i64, _>("lessons_done").max(0) as u32,
+        model: r.get("model"),
+        content: content
+            .map(|c| from_json("generated program", &c))
+            .transpose()?,
+        created_at: r.get("created_at"),
+        updated_at: r.get("updated_at"),
+    })
+}
+
+#[async_trait]
+impl GeneratedProgramRepository for SqliteStore {
+    async fn save_generated(&self, user: &UserId, g: &GeneratedProgramRecord) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO generated_programs (id, user_id, topic, lang, level, status, error, \
+             lessons_total, lessons_done, model, content, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
+             status = excluded.status, error = excluded.error, lessons_total = excluded.lessons_total, \
+             lessons_done = excluded.lessons_done, model = excluded.model, content = excluded.content, \
+             updated_at = excluded.updated_at",
+        )
+        .bind(&g.id)
+        .bind(user.as_str())
+        .bind(&g.topic)
+        .bind(&g.lang)
+        .bind(enum_str(&g.level))
+        .bind(enum_str(&g.status))
+        .bind(&g.error)
+        .bind(i64::from(g.lessons_total))
+        .bind(i64::from(g.lessons_done))
+        .bind(&g.model)
+        .bind(g.content.as_ref().map(to_json))
+        .bind(g.created_at)
+        .bind(g.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn generated(&self, id: &str) -> AppResult<Option<GeneratedProgramRecord>> {
+        sqlx::query("SELECT * FROM generated_programs WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(generated_from_row)
+            .transpose()
+    }
+
+    async fn list_generated(&self, user: &UserId) -> AppResult<Vec<GeneratedProgramRecord>> {
+        sqlx::query(
+            "SELECT * FROM generated_programs WHERE user_id = ? ORDER BY created_at DESC, id",
+        )
+        .bind(user.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(generated_from_row)
+        .collect()
+    }
+
+    async fn delete_generated(&self, user: &UserId, id: &str) -> AppResult<()> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        sqlx::query("DELETE FROM learning_progress WHERE user_id = ? AND program_id = ?")
+            .bind(user.as_str())
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        sqlx::query("DELETE FROM generated_programs WHERE user_id = ? AND id = ?")
+            .bind(user.as_str())
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)
+    }
+
+    async fn fail_interrupted_generations(&self) -> AppResult<u64> {
+        Ok(sqlx::query(
+            "UPDATE generated_programs SET status = 'failed', \
+             error = 'interrupted by a daemon restart', updated_at = ? WHERE status = 'generating'",
+        )
+        .bind(est_core::now())
+        .execute(&self.pool)
+        .await
+        .map_err(db)?
+        .rows_affected())
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -1126,6 +1233,16 @@ impl DataExporter for SqliteStore {
             "events": events,
             "adi_assessments": AdiRepository::list(self).await?,
             "learning_progress": self.progress(&user.id, None).await?,
+            // What was asked for and what came out; generated quiz keys stay
+            // on the server like bundled ones.
+            "generated_programs": self.list_generated(&user.id).await?.iter().map(|g| serde_json::json!({
+                "id": g.id, "topic": g.topic, "lang": g.lang, "level": g.level,
+                "status": g.status, "model": g.model, "created_at": g.created_at,
+                "title": g.content.as_ref().map(|c| c.title.clone()),
+                "lessons": g.content.as_ref().map(|c| c.lessons.iter()
+                    .map(|l| serde_json::json!({ "id": l.id, "kind": l.kind, "title": l.title }))
+                    .collect::<Vec<_>>()),
+            })).collect::<Vec<_>>(),
         }))
     }
 }

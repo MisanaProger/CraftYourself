@@ -83,6 +83,18 @@ pub fn api() -> Router<Runtime> {
             get(sessions::runs).post(sessions::start_run),
         )
         .route("/learning/programs", get(learning::programs))
+        .route(
+            "/learning/generated",
+            get(learning::generated).post(learning::generate),
+        )
+        .route(
+            "/learning/generated/{id}",
+            get(learning::generated_one).delete(learning::delete_generated),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/page",
+            get(learning::page),
+        )
         .route("/learning/programs/{id}", get(learning::program))
         .route(
             "/learning/programs/{id}/lessons/{lesson}",

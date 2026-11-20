@@ -4,9 +4,9 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use est_application::StartedSession;
 use est_application::learning::{LessonView, ProgramTile, ProgramView, normalize_lang};
 use est_application::ports::LessonProgress;
+use est_application::{GenerateProgram, GeneratedProgramSummary, StartedSession};
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
@@ -118,4 +118,45 @@ pub async fn artifact_file(Path((id, path)): Path<(String, String)>) -> Response
         Ok((bytes, mime)) => super::isolated::document(bytes, mime),
         Err(e) => ApiError(e.into()).into_response(),
     }
+}
+
+/// The HTML page of a generated lesson, as an isolated document.
+pub async fn page(
+    State(rt): State<Runtime>,
+    Path((program, lesson)): Path<(String, String)>,
+) -> Response {
+    match rt.app.lesson_page(&program, &lesson).await {
+        Ok(html) => super::isolated::model_page(html),
+        Err(e) => ApiError(e).into_response(),
+    }
+}
+
+pub async fn generated(State(rt): State<Runtime>) -> ApiResult<Json<Vec<GeneratedProgramSummary>>> {
+    Ok(Json(rt.app.generated_programs().await?))
+}
+
+pub async fn generated_one(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<GeneratedProgramSummary>> {
+    Ok(Json(rt.app.generated_program(&id).await?))
+}
+
+/// Starts generating a program in the background (202 Accepted).
+pub async fn generate(
+    State(rt): State<Runtime>,
+    Json(req): Json<GenerateProgram>,
+) -> ApiResult<(StatusCode, Json<GeneratedProgramSummary>)> {
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(rt.app.generate_program(req).await?),
+    ))
+}
+
+pub async fn delete_generated(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    rt.app.delete_generated_program(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
