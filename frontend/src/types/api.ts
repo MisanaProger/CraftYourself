@@ -475,3 +475,25 @@ export interface ProblemSummary {
   conversation_id: string | null;
   created_at: string;
 }
+
+export type RecommendationAction =
+  | { kind: "open_program"; program_id: string; title: string }
+  | { kind: "generate_program"; topic: string; level: GenerationLevel }
+  | { kind: "solve_problems"; platform: "codeforces" | "leetcode"; tags: string[]; rating: number | null; difficulty: string | null; url: string }
+  | { kind: "continue_task"; task_id: string; title: string; conversation_id: string | null };
+
+export interface Recommendation {
+  title: string;
+  reason: string;
+  action: RecommendationAction | null;
+}
+
+export interface RecommendationSet {
+  id: string;
+  created_at: string;
+  model: string;
+  lang: string;
+  summary: string;
+  items: Recommendation[];
+  activity: unknown;
+}

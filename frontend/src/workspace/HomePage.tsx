@@ -5,6 +5,7 @@ import { AdiSummary, SkillSummary, TaskSummary } from "../analytics/SummaryCards
 import { Icon } from "../app/icons";
 import { ThemeToggle } from "../app/theme";
 import { GeneratedPrograms } from "../learning/GeneratedPrograms";
+import { Recommendations } from "../learning/Recommendations";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { ProgramTile } from "../types/api";
@@ -88,6 +89,8 @@ export function HomePage() {
           </div>
         </section>
       )}
+
+      <Recommendations />
 
       <h2 className="section-title">{t("home.programs")}</h2>
       <ErrorBox error={programs.error} />
