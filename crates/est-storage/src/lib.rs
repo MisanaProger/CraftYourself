@@ -10,9 +10,9 @@ use async_trait::async_trait;
 use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
     EventLog, GeneratedProgramRecord, GeneratedProgramRepository, LearningProgressRepository,
-    LessonProgress, ProjectRepository, RecommendationRepository, RecommendationSet,
-    SandboxRunRepository, SessionRepository, SessionSummaryRepository, StoredEvent, TaskRepository,
-    User, UserRepository,
+    LessonProgress, LessonResult, LessonResultRepository, ProjectRepository,
+    RecommendationRepository, RecommendationSet, SandboxRunRepository, SessionRepository,
+    SessionSummaryRepository, StoredEvent, TaskRepository, User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -1179,12 +1179,17 @@ impl GeneratedProgramRepository for SqliteStore {
 
     async fn delete_generated(&self, user: &UserId, id: &str) -> AppResult<()> {
         let mut tx = self.pool.begin().await.map_err(db)?;
-        sqlx::query("DELETE FROM learning_progress WHERE user_id = ? AND program_id = ?")
-            .bind(user.as_str())
-            .bind(id)
-            .execute(&mut *tx)
-            .await
-            .map_err(db)?;
+        for sql in [
+            "DELETE FROM learning_progress WHERE user_id = ? AND program_id = ?",
+            "DELETE FROM lesson_results WHERE user_id = ? AND program_id = ?",
+        ] {
+            sqlx::query(sql)
+                .bind(user.as_str())
+                .bind(id)
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
         sqlx::query("DELETE FROM generated_programs WHERE user_id = ? AND id = ?")
             .bind(user.as_str())
             .bind(id)
@@ -1308,6 +1313,47 @@ impl SessionSummaryRepository for SqliteStore {
     }
 }
 
+// ---- lesson results ----------------------------------------------------------
+
+#[async_trait]
+impl LessonResultRepository for SqliteStore {
+    async fn record_result(&self, user: &UserId, r: &LessonResult) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO lesson_results (user_id, program_id, lesson_id, source, score, observed_at) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(user.as_str())
+        .bind(&r.program_id)
+        .bind(&r.lesson_id)
+        .bind(enum_str(&r.source))
+        .bind(i64::from(r.score.min(100)))
+        .bind(r.observed_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn lesson_results(&self, user: &UserId) -> AppResult<Vec<LessonResult>> {
+        sqlx::query("SELECT * FROM lesson_results WHERE user_id = ? ORDER BY observed_at, id")
+            .bind(user.as_str())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(|r| {
+                Ok(LessonResult {
+                    program_id: r.get("program_id"),
+                    lesson_id: r.get("lesson_id"),
+                    source: parse_enum("evidence source", r.get("source"))?,
+                    score: r.get::<i64, _>("score").clamp(0, 100) as u8,
+                    observed_at: r.get("observed_at"),
+                })
+            })
+            .collect()
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -1339,6 +1385,7 @@ impl DataExporter for SqliteStore {
             "events": events,
             "adi_assessments": AdiRepository::list(self).await?,
             "session_summaries": self.summaries(&user.id).await?,
+            "lesson_results": self.lesson_results(&user.id).await?,
             "learning_progress": self.progress(&user.id, None).await?,
             // What was asked for and what came out; generated quiz keys stay
             // on the server like bundled ones.

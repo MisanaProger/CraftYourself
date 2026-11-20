@@ -152,7 +152,7 @@ impl App {
 
     /// Summarizes finished sessions that have no summary yet. The task's ADI
     /// is attributed to its most recent completed session only.
-    async fn backfill_summaries(&self) -> AppResult<Vec<SessionSummary>> {
+    pub(crate) async fn backfill_summaries(&self) -> AppResult<Vec<SessionSummary>> {
         let mut stored = self.ports.summaries.summaries(&self.user.id).await?;
         let sessions = self.list_sessions().await?;
         let missing: Vec<&LearningSession> = sessions

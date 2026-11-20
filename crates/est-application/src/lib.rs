@@ -16,6 +16,7 @@ pub mod problems;
 pub mod recommendations;
 pub mod sandbox;
 mod service;
+pub mod skills;
 
 pub use analytics::{AdiHistoryItem, AdiOverview, PrivacySettings, SkillMatrix};
 pub use conversation::{ConversationView, NewConversation, PostMessage};

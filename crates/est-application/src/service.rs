@@ -42,6 +42,7 @@ pub struct Ports {
     pub generated: Arc<dyn GeneratedProgramRepository>,
     pub recommendations: Arc<dyn RecommendationRepository>,
     pub summaries: Arc<dyn SessionSummaryRepository>,
+    pub lesson_results: Arc<dyn LessonResultRepository>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -2,8 +2,8 @@
 //!
 //! Content comes from `est-learning`; progress is stored per learner.
 //! Finishing a material by itself does not raise any Skill Matrix score:
-//! quiz results, artifact results and practice outcomes are recorded so they
-//! can become assessment evidence later.
+//! quiz attempts, artifact results and practice outcomes are evidence
+//! (`skills.rs`); reading is not.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -18,9 +18,10 @@ use est_learning::{
 use serde::Serialize;
 use serde_json::json;
 
-use crate::ports::{LessonProgress, LessonStatus};
+use crate::ports::{LessonProgress, LessonResult, LessonStatus};
 use crate::service::{StartedSession, blocking};
 use crate::{AddProject, App, AppError, AppResult};
+use est_discipline::EvidenceSource;
 
 impl From<LearningError> for AppError {
     fn from(e: LearningError) -> Self {
@@ -408,6 +409,15 @@ impl App {
         let quiz = loaded.quiz(&lesson)?;
         let result = est_learning::grade(&quiz, &answers, lang);
         let mut p = self.current(program_id, lesson_id).await?;
+        let now = est_core::now();
+        self.record_result(
+            program_id,
+            lesson_id,
+            EvidenceSource::Quiz,
+            result.score,
+            now,
+        )
+        .await?;
         p.attempts += 1;
         p.score = Some(p.score.unwrap_or(0).max(result.score as u8));
         if result.passed {
@@ -436,8 +446,21 @@ impl App {
         )
         .await?;
         let mut p = self.current(program_id, lesson_id).await?;
+        // Artifacts report progress continuously: an improvement is a new
+        // result, a repeat of the best one is not.
+        let score = score.min(100);
+        if p.score.is_none_or(|best| score > u32::from(best)) {
+            self.record_result(
+                program_id,
+                lesson_id,
+                EvidenceSource::Artifact,
+                score,
+                est_core::now(),
+            )
+            .await?;
+        }
         p.attempts += 1;
-        p.score = Some(p.score.unwrap_or(0).max(score.min(100) as u8));
+        p.score = Some(p.score.unwrap_or(0).max(score as u8));
         if completed {
             p.status = LessonStatus::Completed;
         } else if p.status == LessonStatus::NotStarted {
@@ -448,7 +471,30 @@ impl App {
         Ok(p)
     }
 
-    async fn practice_task(
+    async fn record_result(
+        &self,
+        program_id: &str,
+        lesson_id: &str,
+        source: EvidenceSource,
+        score: u32,
+        observed_at: est_core::Timestamp,
+    ) -> AppResult<()> {
+        self.ports
+            .lesson_results
+            .record_result(
+                &self.user.id,
+                &LessonResult {
+                    program_id: program_id.to_owned(),
+                    lesson_id: lesson_id.to_owned(),
+                    source,
+                    score: score.min(100) as u8,
+                    observed_at,
+                },
+            )
+            .await
+    }
+
+    pub(crate) async fn practice_task(
         &self,
         p: Option<&LessonProgress>,
     ) -> AppResult<Option<est_domain::Task>> {

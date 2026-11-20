@@ -170,16 +170,23 @@ impl App {
             .into_iter()
             .filter(|t| t.status == TaskStatus::Done)
             .collect();
-        let disciplines = est_discipline::matrix(lang, |id| {
-            done.iter()
-                .filter(|t| t.disciplines.iter().any(|d| d == id))
-                .count() as u32
-        });
+        let evidence = self.skill_evidence(lang).await?;
+        let disciplines = est_discipline::matrix(
+            lang,
+            |id| {
+                done.iter()
+                    .filter(|t| t.disciplines.iter().any(|d| d == id))
+                    .count() as u32
+            },
+            &evidence,
+            est_core::now(),
+        );
         Ok(SkillMatrix {
             catalog_version: est_discipline::CATALOG_VERSION,
             disciplines,
-            note: "Оценка навыков по evidence появится на этапе 7. Пока все навыки — «не оценено»: \
-                   отсутствие данных не равно нулевому навыку.",
+            note: "Assessed from observed evidence only: quiz attempts, artifact results, \
+                   completed practice and Issues. Reading is not evidence, the ADI is not an input, \
+                   and a skill without evidence is not_assessed, never zero.",
         })
     }
 

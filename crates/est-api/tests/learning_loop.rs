@@ -698,7 +698,9 @@ async fn full_learning_loop() {
         .await;
     assert_eq!(s, StatusCode::CONFLICT, "no active session");
 
-    // The Skill Matrix is separate from ADI: untested skills are not zero.
+    // The completed Issue is evidence for its discipline as a whole (from
+    // tests and help levels, not from the ADI); skills without evidence
+    // stay not assessed, never zero.
     let (_, m) = h.get("/api/v1/analytics/disciplines").await;
     let dt = m["disciplines"]
         .as_array()
@@ -709,10 +711,25 @@ async fn full_learning_loop() {
     assert_eq!(
         (
             dt["status"].as_str(),
-            &dt["score"],
+            dt["evidence_count"].as_u64(),
             dt["practice_tasks"].as_u64()
         ),
-        (Some("not_assessed"), &Value::Null, Some(1))
+        (Some("insufficient_evidence"), Some(1), Some(1))
+    );
+    assert!(dt["score"].is_u64());
+    assert!(
+        dt["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["source"] == "issue")
+    );
+    assert!(
+        dt["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["score"].is_null() && s["status"] == "not_assessed")
     );
 
     // Privacy: provider shown, export contains the history, delete removes it.
@@ -1113,6 +1130,66 @@ async fn testing_program() {
     assert_eq!(tiles[0]["completed"], 4);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["learning_progress"].as_array().unwrap().len(), 4);
+    // Two quiz attempts and one artifact result; reading is not evidence.
+    assert_eq!(export["lesson_results"].as_array().unwrap().len(), 3);
+
+    // Skill Matrix evidence: the lessons' skills, from observed results.
+    let (_, m) = h.get("/api/v1/analytics/disciplines?lang=en").await;
+    let dt = m["disciplines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["id"] == "debugging-testing")
+        .unwrap()
+        .clone();
+    let skill = |id: &str| {
+        dt["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    // The quiz was retaken: the latest attempt counts, both are history.
+    let unit = skill("unit-integration");
+    assert_eq!(
+        (unit["score"].as_u64(), unit["status"].as_str()),
+        (Some(100), Some("insufficient_evidence"))
+    );
+    assert_eq!(unit["dimensions"][0]["dimension"], "theory");
+    assert_eq!(
+        skill("edge-cases")["score"],
+        100,
+        "artifact, clamped to 100"
+    );
+    // Practice: tests green (100), no criteria checked (0) → 50; no help → independence 100.
+    let regression = skill("regression");
+    assert_eq!(regression["score"], 75);
+    assert_eq!(
+        regression["dimensions"],
+        json!([{ "dimension": "practice", "score": 50, "evidence_count": 1 },
+               { "dimension": "independence", "score": 100, "evidence_count": 1 }])
+    );
+    assert_eq!(skill("reproduction")["score"], 75);
+    assert!(skill("debugger")["score"].is_null());
+    // The discipline: three things observed from three sources.
+    assert_eq!(
+        (
+            dt["status"].as_str(),
+            dt["evidence_count"].as_u64(),
+            dt["score"].as_u64(),
+            dt["confidence"].as_str()
+        ),
+        (Some("established"), Some(3), Some(83), Some("medium"))
+    );
+    let history = dt["history"].as_array().unwrap();
+    assert_eq!(history.len(), 7);
+    assert_eq!(history[0]["source"], "practice");
+    assert!(history.iter().any(|e| e["source"] == "quiz"
+        && e["score"] == 0
+        && e["title"] == "Check: reading test output"));
+    assert_eq!(m["catalog_version"], "esm-catalog-0.2");
 }
 
 #[tokio::test]

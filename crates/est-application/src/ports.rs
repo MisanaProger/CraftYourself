@@ -478,3 +478,21 @@ pub trait SessionSummaryRepository: Send + Sync {
     /// Newest first.
     async fn summaries(&self, user: &UserId) -> AppResult<Vec<est_domain::SessionSummary>>;
 }
+
+/// One observed result of a quiz attempt or an artifact, kept as Skill
+/// Matrix evidence (lesson progress keeps only the best score).
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct LessonResult {
+    pub program_id: String,
+    pub lesson_id: String,
+    pub source: est_discipline::EvidenceSource,
+    pub score: u8,
+    pub observed_at: est_core::Timestamp,
+}
+
+#[async_trait]
+pub trait LessonResultRepository: Send + Sync {
+    async fn record_result(&self, user: &UserId, result: &LessonResult) -> AppResult<()>;
+    /// Oldest first.
+    async fn lesson_results(&self, user: &UserId) -> AppResult<Vec<LessonResult>>;
+}
