@@ -651,6 +651,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "est-problems"
+version = "0.1.0"
+dependencies = [
+ "est-domain",
+ "serde",
+ "url",
+]
+
+[[package]]
 name = "est-projects"
 version = "0.1.0"
 dependencies = [

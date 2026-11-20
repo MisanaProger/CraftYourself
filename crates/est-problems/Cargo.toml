@@ -1,0 +1,11 @@
+[package]
+name = "est-problems"
+description = "Online-judge problems (LeetCode, Codeforces): links, statements, samples and the workspace for a guided analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+est-domain.workspace = true
+serde.workspace = true
+url.workspace = true
