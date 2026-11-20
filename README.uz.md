@@ -14,6 +14,26 @@ Arxitektura: [`docs/architecture.md`](docs/architecture.md) (TZ v0.3) ·
 Reja: [`ROADMAP.md`](ROADMAP.md) · AI-agentlar uchun: [`AGENTS.md`](AGENTS.md) ·
 Interfeys konseptlari: [`docs/design/`](docs/design)
 
+## Skrinshotlar
+
+**Bosh sahifa: o‘quv dasturlari.** Birinchi dastur mavjud, qolganlari — «tez orada».
+
+![O‘quv dasturlari plitkalari bilan bosh sahifa](docs/screenshots/uz/home.webp)
+
+**Chatdagi Issue.** L0 da mentor savollar beradi va qabul mezonlarini tuzadi; to‘liq yechim so‘rovi bloklangan va bir pog‘onaga oshirish taklif qilingan; testlar Docker sandboxida o‘tdi.
+
+![Eskalatsiya taklifi va sandboxdagi test natijasi bilan Issue chati](docs/screenshots/uz/chat.webp)
+
+<table>
+<tr>
+<td width="50%">Mentor javobidan saqlangan <b>qabul mezonlari</b> va nazorat ro‘yxati.<br><img src="docs/screenshots/uz/criteria.webp" alt="Qabul mezonlari bilan Issue paneli"></td>
+<td width="50%">Izolyatsiyalangan freymdagi <b>chegaraviy qiymatlar trenajyori</b>: 5000 uchun noto‘g‘ri kutilgan qiymat aniqlandi.<br><img src="docs/screenshots/uz/trainer.webp" alt="Chegaraviy qiymatlar trenajyori"></td>
+</tr>
+<tr>
+<td colspan="2">Yorug‘ mavzudagi <b>Engineering Skill Matrix</b>: tekshirilmagan ko‘nikmalar nol emas, «baholanmagan».<br><img src="docs/screenshots/uz/skills-light.webp" alt="Yorug‘ mavzudagi Engineering Skill Matrix"></td>
+</tr>
+</table>
+
 ## Hozir nima ishlaydi
 
 - **O‘quv dasturlari.** Dasturlar plitkalari bilan bosh sahifa. Birinchi

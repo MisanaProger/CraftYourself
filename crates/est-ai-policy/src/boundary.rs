@@ -230,7 +230,7 @@ re!(
     | когда\s+(эт\w+\s+)?(задач\w*|issue)\s+(будет\s+)?(счита\w*\s+)?(выполнен|готов|решен|сделан)
     | \bdefinition\s+of\s+done\b | \bacceptance\s+criteria\b
     | \bwhen\s+is\s+(the|this)\s+(task|issue)\s+(done|complete|finished)\b
-    | qabul\s+qilish\s+mezon
+    | qabul\s+(qilish\s+)?mezon
     "
 );
 
@@ -351,6 +351,8 @@ mod tests {
             "Когда эта задача будет считаться выполненной?",
             "What are the acceptance criteria?",
             "Definition of done for this issue?",
+            // The Uzbek "formulate with the mentor" button.
+            "Ushbu vazifa uchun qabul mezonlarini tuzib ber.",
         ] {
             assert_eq!(classify(q), QueryKind::AcceptanceCriteria, "{q}");
         }

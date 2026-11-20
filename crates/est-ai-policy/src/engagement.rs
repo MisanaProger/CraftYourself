@@ -25,6 +25,8 @@ re!(
     | \b(full|complete|whole|entire)\s+(solution|implementation|code|fix)\b
     | \bsolve\s+(it|this|the\s+task)\s+for\s+me\b
     | \bdo\s+it\s+for\s+me\b
+    | (to[‘'ʻ’]?liq|butun|tayyor)\s+(yechim|kod|tuzatish)
+    | (men\s+uchun|o[‘'ʻ’]?rnimga)\s+(hal\s+qil|yech|yoz|bajar)
     "
 );
 
@@ -39,6 +41,9 @@ re!(
     | \b(show|write|give)\s+(me\s+)?(the\s+|a\s+|an\s+|some\s+)?(code|example|snippet|fix|solution|implementation|pseudocode|function|test)\b
     | \bhow\s+(do\s+i|to|should\s+i)\s+(fix|implement|write)\b
     | \bfix\s+(it|this)\b
+    | (kod|misol|yechim|tuzatish|psevdokod|test)\w*\s+(\S+\s+)?(yozib\s+)?(ber|ko[‘'ʻ’]?rsat)
+    | qanday\s+(tuzat|yoz|amalga\s+oshir)
+    | psevdokod
     "
 );
 
@@ -53,6 +58,9 @@ re!(
     | \bwhy\s+(does|is|do|did)\s+(it|this|my|the)\b.*\b(fail|crash|panic|break|wrong|error)
     | \bwhat('s|\s+is)\s+(wrong|the\s+cause)\b
     | \bexplain\s+(the|this)\s+(error|failure|stack|trace|panic)\b
+    | nega\s+(\S+\s+){0,3}(yiqil|ishlamay|xato|o[‘'ʻ’]?tmay|panika)
+    | (sababi|xatosi)\s+nima
+    | (xatoni|sababini)\s+tushuntir
     "
 );
 
@@ -64,6 +72,8 @@ re!(
     | где\s+(искать|смотреть|посмотреть|находится)
     | с\s+чего\s+начать | куда\s+смотреть | в\s+каком\s+(файле|месте|модуле)
     | \bhint\b | \bwhere\s+(should\s+i\s+)?(look|start)\b | \bwhich\s+file\b
+    | maslahat | ishora
+    | qayerdan\s+(qidir|boshla) | qayerga\s+qara | qaysi\s+faylda
     "
 );
 
@@ -107,6 +117,15 @@ mod tests {
             ("show me the fix", Demonstration),
             ("give me the complete solution", Active),
             ("where should I look?", Hinting),
+            ("Qayerdan boshlay?", Hinting),
+            ("Qaysi faylda qidiray, maslahat ber", Hinting),
+            ("Nega test yiqilyapti?", Explaining),
+            ("Bu xatoning sababi nima?", Explaining),
+            ("Tuzatish misolini ko‘rsat", Demonstration),
+            ("Kodni yozib ber", Demonstration),
+            ("Menga to‘liq yechimni ber", Active),
+            ("Men uchun hal qil", Active),
+            ("Topdim, keyin nimani tekshiray?", Socratic),
         ] {
             assert_eq!(required_level(q), level, "{q}");
         }

@@ -14,6 +14,26 @@ Architecture: [`docs/architecture.md`](docs/architecture.md) (spec v0.3) ·
 Plan: [`ROADMAP.md`](ROADMAP.md) · For AI agents: [`AGENTS.md`](AGENTS.md) ·
 Interface concepts: [`docs/design/`](docs/design)
 
+## Screenshots
+
+**Home: learning programs.** The first program is available, the rest are coming soon.
+
+![Home page with learning program tiles](docs/screenshots/en/home.webp)
+
+**An Issue in the chat.** At L0 the mentor asks questions and formulates acceptance criteria; a request for the full solution is blocked and a one-step escalation is proposed; tests ran in the Docker sandbox.
+
+![Issue chat with an escalation proposal and a sandbox test run](docs/screenshots/en/chat.webp)
+
+<table>
+<tr>
+<td width="50%"><b>Acceptance criteria</b> saved from the mentor's answer, with a checklist.<br><img src="docs/screenshots/en/criteria.webp" alt="Issue panel with acceptance criteria"></td>
+<td width="50%"><b>Boundary-values trainer</b> in an isolated frame: the wrong expectation for 5000 is caught.<br><img src="docs/screenshots/en/trainer.webp" alt="Boundary values trainer"></td>
+</tr>
+<tr>
+<td colspan="2"><b>Engineering Skill Matrix</b> in the light theme: untested skills are “not assessed”, not zero.<br><img src="docs/screenshots/en/skills-light.webp" alt="Engineering Skill Matrix in the light theme"></td>
+</tr>
+</table>
+
 ## What works today
 
 - **Learning programs.** A home page with program tiles. The first program,
