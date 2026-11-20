@@ -1,0 +1,18 @@
+{
+  "id": "boundary-values",
+  "version": "1.0.0",
+  "title": {
+    "ru": "Граничные значения",
+    "en": "Boundary values",
+    "uz": "Chegaraviy qiymatlar"
+  },
+  "format": "standalone",
+  "disciplines": ["debugging-testing"],
+  "skills": ["edge-cases", "unit-integration"],
+  "learning_objectives": [
+    { "ru": "Разбивать входные данные на классы эквивалентности", "en": "Split inputs into equivalence classes", "uz": "Kirish qiymatlarini ekvivalentlik sinflariga ajratish" },
+    { "ru": "Проверять каждую границу с обеих сторон", "en": "Test every boundary from both sides", "uz": "Har bir chegarani ikki tomondan tekshirish" },
+    { "ru": "Записывать ожидание до запуска", "en": "Write down the expectation before running", "uz": "Ishga tushirishdan oldin kutilgan natijani yozish" }
+  ],
+  "entrypoint": "index.html"
+}

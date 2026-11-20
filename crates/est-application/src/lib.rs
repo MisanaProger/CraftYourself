@@ -8,6 +8,7 @@
 mod analytics;
 mod conversation;
 mod error;
+pub mod learning;
 pub mod ports;
 pub mod sandbox;
 mod service;

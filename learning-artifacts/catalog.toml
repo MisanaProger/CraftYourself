@@ -1,0 +1,100 @@
+# Learning programs shown as tiles on the home page.
+# status: "available" | "coming_soon". Texts: ru, en, uz (fallback: en → ru).
+
+[[program]]
+id = "testing"
+status = "available"
+icon = "test"
+disciplines = ["debugging-testing"]
+level = "beginner"
+minutes = 90
+title.ru = "Тесты: запуск и качество"
+title.en = "Tests: running and quality"
+title.uz = "Testlar: ishga tushirish va sifat"
+summary.ru = "Как запускать тесты и читать их вывод, что отличает хороший тест, граничные значения и регрессионный тест в песочнице."
+summary.en = "How to run tests and read their output, what makes a good test, boundary values and a regression test in the sandbox."
+summary.uz = "Testlarni qanday ishga tushirish va natijasini o‘qish, yaxshi test nimadan iborat, chegaraviy qiymatlar va sandboxda regressiya testi."
+
+[[program]]
+id = "git-workflow"
+status = "coming_soon"
+icon = "git"
+disciplines = ["git"]
+level = "beginner"
+minutes = 120
+title.ru = "Git: коммиты и Pull Request"
+title.en = "Git: commits and pull requests"
+title.uz = "Git: kommitlar va Pull Request"
+summary.ru = "Атомарные коммиты, сообщения по соглашениям проекта, ветки, разбор конфликтов и подготовка PR."
+summary.en = "Atomic commits, messages that follow the project's conventions, branches, conflicts and preparing a PR."
+summary.uz = "Atomar kommitlar, loyiha qoidalariga mos xabarlar, tarmoqlar, konfliktlarni hal qilish va PR tayyorlash."
+
+[[program]]
+id = "debugging"
+status = "coming_soon"
+icon = "bug"
+disciplines = ["debugging-testing"]
+level = "beginner"
+minutes = 120
+title.ru = "Отладка: гипотезы и воспроизведение"
+title.en = "Debugging: hypotheses and reproduction"
+title.uz = "Debugging: gipotezalar va qayta hosil qilish"
+summary.ru = "Минимальный воспроизводимый пример, гипотезы и их проверка, отладчик и логи."
+summary.en = "Minimal reproducible examples, forming and testing hypotheses, debuggers and logs."
+summary.uz = "Minimal takrorlanadigan misol, gipotezalarni tuzish va tekshirish, debugger va loglar."
+
+[[program]]
+id = "code-reading"
+status = "coming_soon"
+icon = "map"
+disciplines = ["architecture"]
+level = "beginner"
+minutes = 90
+title.ru = "Чтение незнакомого кода"
+title.en = "Reading unfamiliar code"
+title.uz = "Notanish kodni o‘qish"
+summary.ru = "Как ориентироваться в большом проекте: точки входа, поиск по коду, границы модулей."
+summary.en = "Finding your way in a large project: entry points, code search, module boundaries."
+summary.uz = "Katta loyihada yo‘l topish: kirish nuqtalari, kod bo‘yicha qidiruv, modul chegaralari."
+
+[[program]]
+id = "documentation"
+status = "coming_soon"
+icon = "book"
+disciplines = ["debugging-testing"]
+level = "beginner"
+minutes = 60
+title.ru = "Работа с документацией"
+title.en = "Working with documentation"
+title.uz = "Hujjatlar bilan ishlash"
+summary.ru = "API Reference, исходный код как документация, версии библиотек и их ограничения."
+summary.en = "API references, source code as documentation, library versions and their limits."
+summary.uz = "API Reference, hujjat sifatida manba kodi, kutubxona versiyalari va cheklovlari."
+
+[[program]]
+id = "data-structures"
+status = "coming_soon"
+icon = "tree"
+disciplines = ["data-structures", "algorithms"]
+level = "intermediate"
+minutes = 180
+title.ru = "Структуры данных в визуализациях"
+title.en = "Data structures, visualised"
+title.uz = "Ma’lumotlar tuzilmalari vizualizatsiyada"
+summary.ru = "Хеш-таблицы, деревья отрезков, деревья Фенвика — интерактивные симуляции и задачи."
+summary.en = "Hash tables, segment trees, Fenwick trees — interactive simulations and exercises."
+summary.uz = "Xesh-jadvallar, segmentlar daraxti, Fenvik daraxti — interaktiv simulyatsiyalar va mashqlar."
+
+[[program]]
+id = "issue-engineering"
+status = "coming_soon"
+icon = "issue"
+disciplines = ["git"]
+level = "beginner"
+minutes = 60
+title.ru = "Issue Engineering"
+title.en = "Issue engineering"
+title.uz = "Issue Engineering"
+summary.ru = "Bug report и feature request, которые сопровождающие хотят читать: шаги, окружение, минимальный пример."
+summary.en = "Bug reports and feature requests maintainers want to read: steps, environment, minimal example."
+summary.uz = "Saqlovchilar o‘qishni xohlaydigan bug report va feature request: qadamlar, muhit, minimal misol."

@@ -9,8 +9,8 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
-    EventLog, ProjectRepository, SandboxRunRepository, SessionRepository, StoredEvent,
-    TaskRepository, User, UserRepository,
+    EventLog, LearningProgressRepository, LessonProgress, ProjectRepository, SandboxRunRepository,
+    SessionRepository, StoredEvent, TaskRepository, User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -1037,6 +1037,64 @@ impl SandboxRunRepository for SqliteStore {
     }
 }
 
+// ---- learning progress -----------------------------------------------------
+
+#[async_trait]
+impl LearningProgressRepository for SqliteStore {
+    async fn progress(
+        &self,
+        user: &UserId,
+        program: Option<&str>,
+    ) -> AppResult<Vec<LessonProgress>> {
+        sqlx::query(
+            "SELECT * FROM learning_progress WHERE user_id = ?1 AND (?2 IS NULL OR program_id = ?2) \
+             ORDER BY program_id, lesson_id",
+        )
+        .bind(user.as_str())
+        .bind(program)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(|r| {
+            Ok(LessonProgress {
+                program_id: r.get("program_id"),
+                lesson_id: r.get("lesson_id"),
+                status: parse_enum("lesson status", r.get("status"))?,
+                score: r.get::<Option<i64>, _>("score").map(|s| s.clamp(0, 100) as u8),
+                attempts: r.get::<i64, _>("attempts") as u32,
+                detail: from_json("lesson detail", r.get("detail"))?,
+                updated_at: r.get("updated_at"),
+            })
+        })
+        .collect()
+    }
+
+    async fn save_progress(&self, user: &UserId, p: &LessonProgress) -> AppResult<()> {
+        if p.status == est_application::ports::LessonStatus::NotStarted {
+            return Ok(());
+        }
+        sqlx::query(
+            "INSERT INTO learning_progress (user_id, program_id, lesson_id, status, score, attempts, detail, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, program_id, lesson_id) DO UPDATE SET \
+             status = excluded.status, score = excluded.score, attempts = excluded.attempts, \
+             detail = excluded.detail, updated_at = excluded.updated_at",
+        )
+        .bind(user.as_str())
+        .bind(&p.program_id)
+        .bind(&p.lesson_id)
+        .bind(enum_str(&p.status))
+        .bind(p.score.map(i64::from))
+        .bind(i64::from(p.attempts))
+        .bind(p.detail.to_string())
+        .bind(p.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -1067,6 +1125,7 @@ impl DataExporter for SqliteStore {
             "conversations": conversations,
             "events": events,
             "adi_assessments": AdiRepository::list(self).await?,
+            "learning_progress": self.progress(&user.id, None).await?,
         }))
     }
 }
@@ -1253,8 +1312,13 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(EventLog::for_session(&s, &a.id, None).await.unwrap().len(), 2);
-        let m = EventLog::for_session(&s, &a.id, Some("mentor.request")).await.unwrap();
+        assert_eq!(
+            EventLog::for_session(&s, &a.id, None).await.unwrap().len(),
+            2
+        );
+        let m = EventLog::for_session(&s, &a.id, Some("mentor.request"))
+            .await
+            .unwrap();
         assert_eq!(m.len(), 1);
         assert_eq!(m[0].event.payload["level"], 2);
     }

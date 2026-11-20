@@ -110,6 +110,19 @@ impl GitPort for CliGit {
         Repo::open(repo).ls_files().map_err(map)
     }
 
+    fn init_with_commit(&self, path: &Path, message: &str) -> AppResult<String> {
+        let repo = Repo::init(path).map_err(map)?;
+        repo.add(&[".".into()]).map_err(map)?;
+        repo.commit(
+            message,
+            &crate::Identity {
+                name: "Craft Yourself".into(),
+                email: "practice@craft-yourself.invalid".into(),
+            },
+        )
+        .map_err(map)
+    }
+
     fn grep(&self, repo: &Path, needle: &str, max: usize) -> AppResult<Vec<SourceMatch>> {
         Ok(Repo::open(repo)
             .grep(needle, max)

@@ -112,6 +112,10 @@ impl WorkspaceLayout for EstHome {
             .join("projects")
             .join(slugify(project_name, 60))
     }
+
+    fn practice_dir(&self, name: &str) -> PathBuf {
+        self.learning_dir().join("practice").join(slugify(name, 60))
+    }
 }
 
 /// Opens workspaces in an external editor.

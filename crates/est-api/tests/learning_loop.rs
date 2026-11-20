@@ -778,3 +778,172 @@ command = "cargo test"
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(err["error"].as_str().unwrap().contains("source.revision"));
 }
+
+#[tokio::test]
+async fn testing_program() {
+    let h = harness().await;
+    let (_, tiles) = h.get("/api/v1/learning/programs?lang=en").await;
+    let tiles = tiles.as_array().unwrap();
+    let testing = tiles.iter().find(|t| t["id"] == "testing").unwrap();
+    assert_eq!(
+        (testing["status"].as_str(), testing["lessons"].as_u64()),
+        (Some("available"), Some(6))
+    );
+    assert!(
+        tiles
+            .iter()
+            .filter(|t| t["status"] == "coming_soon")
+            .count()
+            >= 5
+    );
+    let (_, uz) = h.get("/api/v1/learning/programs?lang=uz").await;
+    assert_eq!(uz[0]["title"], "Testlar: ishga tushirish va sifat");
+    let (s, _) = h.get("/api/v1/learning/programs/git-workflow").await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "coming soon");
+
+    // Reading.
+    let base = "/api/v1/learning/programs/testing/lessons";
+    let (_, l) = h.get(&format!("{base}/run-tests?lang=en")).await;
+    assert!(
+        l["body"]["markdown"]
+            .as_str()
+            .unwrap()
+            .starts_with("# Running tests")
+    );
+    assert_eq!(
+        (l["next"].as_str(), &l["previous"]),
+        (Some("read-output"), &Value::Null)
+    );
+    h.post(&format!("{base}/run-tests/complete"), json!({}))
+        .await;
+
+    // Quiz: no answers are sent before an attempt; graded on the server.
+    let (_, l) = h.get(&format!("{base}/read-output?lang=ru")).await;
+    let questions = l["body"]["questions"].as_array().unwrap();
+    assert!(!l["body"].to_string().contains("\"answer\""));
+    let (_, r) = h
+        .post(
+            &format!("{base}/read-output/quiz"),
+            json!({ "answers": {} }),
+        )
+        .await;
+    assert_eq!(
+        (r["score"].as_u64(), r["passed"].as_bool()),
+        (Some(0), Some(false))
+    );
+    let answers: serde_json::Map<String, Value> = r["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| (x["id"].as_str().unwrap().to_owned(), x["answer"].clone()))
+        .collect();
+    assert_eq!(answers.len(), questions.len());
+    let (_, r) = h
+        .post(
+            &format!("{base}/read-output/quiz?lang=en"),
+            json!({ "answers": answers }),
+        )
+        .await;
+    assert_eq!(
+        (r["score"].as_u64(), r["passed"].as_bool()),
+        (Some(100), Some(true))
+    );
+    let (s, _) = h
+        .post(&format!("{base}/run-tests/quiz"), json!({ "answers": {} }))
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "not a quiz lesson");
+
+    // Artifact: an isolated document; progress is relayed by the platform.
+    let req = Request::get("/api/v1/learning/artifacts/boundary-values/index.html")
+        .header("host", "localhost:7878")
+        .body(Body::empty())
+        .unwrap();
+    let res = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let csp = res.headers()["content-security-policy"]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        csp.starts_with("sandbox allow-scripts;") && csp.contains("connect-src 'none'"),
+        "{csp}"
+    );
+    assert!(!csp.contains("allow-same-origin"));
+    let (s, _) = h
+        .get("/api/v1/learning/artifacts/boundary-values/..%2F..%2Fcatalog.toml")
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (_, p) = h
+        .post(
+            &format!("{base}/boundaries/progress"),
+            json!({ "score": 140, "completed": true }),
+        )
+        .await;
+    assert_eq!(
+        (p["status"].as_str(), p["score"].as_u64()),
+        (Some("completed"), Some(100))
+    );
+
+    // Practice: a real project with a bug, its own workspace, tests in the sandbox.
+    let (s, started) = h
+        .post(&format!("{base}/regression/practice"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{started}");
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    assert!(
+        std::fs::read_to_string(ws.join("src/lib.rs"))
+            .unwrap()
+            .contains("fn is_leap_year")
+    );
+    assert!(ws.join("Cargo.toml").is_file());
+    let tid = started["task_id"].as_str().unwrap().to_owned();
+    let (_, task) = h.get(&format!("/api/v1/tasks/{tid}")).await;
+    assert_eq!(task["acceptance_criteria"].as_array().unwrap().len(), 4);
+    assert_eq!(task["test_command"], "cargo test");
+    let (_, again) = h
+        .post(&format!("{base}/regression/practice"), json!({}))
+        .await;
+    assert_eq!(
+        (again["id"].as_str(), again["resumed"].as_bool()),
+        (started["id"].as_str(), Some(true))
+    );
+    let sid = started["id"].as_str().unwrap();
+    let (_, run) = h
+        .post(&format!("/api/v1/sessions/{sid}/sandbox/runs"), json!({}))
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+    assert_eq!(
+        h.sandbox.requests.lock().unwrap()[0].language.as_deref(),
+        Some("rust")
+    );
+    let (_, l) = h.get(&format!("{base}/regression")).await;
+    assert_eq!(
+        (l["status"].as_str(), l["body"]["session_id"].as_str()),
+        (Some("started"), Some(sid))
+    );
+    h.post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+
+    let (_, view) = h.get("/api/v1/learning/programs/testing").await;
+    let statuses: Vec<_> = view["lessons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["status"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            "completed",
+            "completed",
+            "not_started",
+            "not_started",
+            "completed",
+            "completed"
+        ]
+    );
+    let (_, tiles) = h.get("/api/v1/learning/programs").await;
+    assert_eq!(tiles[0]["completed"], 4);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["learning_progress"].as_array().unwrap().len(), 4);
+}

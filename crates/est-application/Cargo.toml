@@ -12,6 +12,7 @@ est-core.workspace = true
 est-documentation.workspace = true
 est-domain.workspace = true
 est-exercises.workspace = true
+est-learning.workspace = true
 est-dependency.workspace = true
 est-discipline.workspace = true
 serde.workspace = true

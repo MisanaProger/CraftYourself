@@ -1,0 +1,78 @@
+pass_percent = 75
+
+[[question]]
+id = "name"
+text.ru = "Какое имя теста лучше?"
+text.en = "Which test name is better?"
+text.uz = "Qaysi test nomi yaxshiroq?"
+options = [
+  { ru = "`test_discount_2`", en = "`test_discount_2`", uz = "`test_discount_2`" },
+  { ru = "`discount_starts_at_exactly_1000`", en = "`discount_starts_at_exactly_1000`", uz = "`discount_starts_at_exactly_1000`" },
+  { ru = "`it_works`", en = "`it_works`", uz = "`it_works`" },
+]
+answer = 1
+explanation.ru = "Имя описывает поведение. Когда тест упадёт, уже будет понятно, что сломалось."
+explanation.en = "The name describes behaviour. When the test fails, it is already clear what broke."
+explanation.uz = "Nom xatti-harakatni tasvirlaydi. Test yiqilganda nima buzilgani allaqachon tushunarli."
+
+[[question]]
+id = "assert"
+code = """// A
+assert!(parse("42").is_ok());
+// B
+assert_eq!(parse("42"), Ok(42));"""
+text.ru = "Какая проверка лучше и почему?"
+text.en = "Which assertion is better, and why?"
+text.uz = "Qaysi tekshiruv yaxshiroq va nega?"
+options = [
+  { ru = "A: короче", en = "A: it is shorter", uz = "A: qisqaroq" },
+  { ru = "B: проверяет значение и при падении показывает ожидание и факт", en = "B: it checks the value and shows expected vs actual on failure", uz = "B: qiymatni tekshiradi va yiqilganda kutilgan va haqiqiy qiymatni ko‘rsatadi" },
+  { ru = "Они равноценны", en = "They are equivalent", uz = "Ular teng" },
+]
+answer = 1
+explanation.ru = "A пройдёт, даже если `parse` вернёт `Ok(0)`. B ловит неверное значение и объясняет падение."
+explanation.en = "A passes even if `parse` returns `Ok(0)`. B catches the wrong value and explains the failure."
+explanation.uz = "A `parse` `Ok(0)` qaytarsa ham o‘tadi. B noto‘g‘ri qiymatni ushlaydi va yiqilishni tushuntiradi."
+
+[[question]]
+id = "time"
+code = """#[test]
+fn report_title_contains_today() {
+    let title = report_title();
+    assert!(title.contains(&Local::now().format("%Y-%m-%d").to_string()));
+}"""
+text.ru = "Что не так с этим тестом?"
+text.en = "What is wrong with this test?"
+text.uz = "Bu testda nima noto‘g‘ri?"
+options = [
+  { ru = "Ничего", en = "Nothing", uz = "Hech narsa" },
+  { ru = "Он недетерминирован: зависит от текущего времени и может упасть около полуночи", en = "It is not deterministic: it depends on the current time and may fail around midnight", uz = "U deterministik emas: joriy vaqtga bog‘liq va yarim tunda yiqilishi mumkin" },
+  { ru = "У него слишком длинное имя", en = "Its name is too long", uz = "Nomi juda uzun" },
+]
+answer = 1
+explanation.ru = "Передавайте дату в функцию (или подменяйте часы) и проверяйте результат для заданной даты."
+explanation.en = "Pass the date into the function (or inject a clock) and check the result for a given date."
+explanation.uz = "Sanani funksiyaga uzating (yoki soatni almashtiring) va berilgan sana uchun natijani tekshiring."
+
+[[question]]
+id = "copy-impl"
+code = """fn price(total: u32) -> u32 { if total >= 1000 { total * 95 / 100 } else { total } }
+
+#[test]
+fn price_is_correct() {
+    let total = 1200;
+    let expected = if total >= 1000 { total * 95 / 100 } else { total };
+    assert_eq!(price(total), expected);
+}"""
+text.ru = "Чем плох этот тест?"
+text.en = "What is wrong with this test?"
+text.uz = "Bu testning kamchiligi nimada?"
+options = [
+  { ru = "Он повторяет реализацию и не поймает ошибку в формуле", en = "It repeats the implementation and will not catch a bug in the formula", uz = "U amalga oshirishni takrorlaydi va formuladagi xatoni ushlamaydi" },
+  { ru = "Он проверяет слишком мало", en = "It checks too little", uz = "U juda kam tekshiradi" },
+  { ru = "Ничем", en = "Nothing", uz = "Hech narsa" },
+]
+answer = 0
+explanation.ru = "Ожидание должно быть очевидной константой: `assert_eq!(price(1200), 1140)`. И стоит добавить границы 999 и 1000."
+explanation.en = "The expectation should be an obvious constant: `assert_eq!(price(1200), 1140)`. Add the 999 and 1000 boundaries too."
+explanation.uz = "Kutilgan qiymat aniq konstanta bo‘lishi kerak: `assert_eq!(price(1200), 1140)`. 999 va 1000 chegaralarini ham qo‘shing."

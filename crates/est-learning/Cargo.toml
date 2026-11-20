@@ -1,0 +1,12 @@
+[package]
+name = "est-learning"
+description = "Interactive Learning Engine: programs, lessons, quizzes and sandboxed learning artifacts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+include_dir.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

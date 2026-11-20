@@ -1,0 +1,69 @@
+pass_percent = 75
+
+[[question]]
+id = "summary"
+code = "test result: FAILED. 7 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out"
+text.ru = "Сколько тестов упало?"
+text.en = "How many tests failed?"
+text.uz = "Nechta test yiqildi?"
+options = [
+  { ru = "1", en = "1", uz = "1" },
+  { ru = "2", en = "2", uz = "2" },
+  { ru = "7", en = "7", uz = "7" },
+  { ru = "10", en = "10", uz = "10" },
+]
+answer = 1
+explanation.ru = "В итоговой строке: 7 прошли, 2 упали, 1 пропущен (ignored)."
+explanation.en = "The summary line says: 7 passed, 2 failed, 1 ignored."
+explanation.uz = "Yakuniy satrda: 7 ta o‘tdi, 2 ta yiqildi, 1 ta o‘tkazib yuborildi."
+
+[[question]]
+id = "left-right"
+code = """assertion `left == right` failed
+  left: [1, 2]
+ right: [1, 2, 3]"""
+text.ru = "Тест вызывает `assert_eq!(parse_range(\"1..3\"), vec![1, 2, 3])`. Что вернула функция?"
+text.en = "The test calls `assert_eq!(parse_range(\"1..3\"), vec![1, 2, 3])`. What did the function return?"
+text.uz = "Test `assert_eq!(parse_range(\"1..3\"), vec![1, 2, 3])` ni chaqiradi. Funksiya nima qaytardi?"
+options = [
+  { ru = "[1, 2, 3]", en = "[1, 2, 3]", uz = "[1, 2, 3]" },
+  { ru = "[1, 2]", en = "[1, 2]", uz = "[1, 2]" },
+  { ru = "Ничего: тест не скомпилировался", en = "Nothing: the test did not compile", uz = "Hech narsa: test kompilyatsiya bo‘lmadi" },
+]
+answer = 1
+explanation.ru = "`left` — первый аргумент `assert_eq!`, здесь это результат функции. Не хватает верхней границы: похоже на `..` вместо `..=`."
+explanation.en = "`left` is the first argument of `assert_eq!`, here the function's result. The upper bound is missing — it looks like `..` instead of `..=`."
+explanation.uz = "`left` — `assert_eq!` ning birinchi argumenti, bu yerda funksiya natijasi. Yuqori chegara yetishmaydi: `..=` o‘rniga `..` ga o‘xshaydi."
+
+[[question]]
+id = "location"
+code = "thread 'tests::parses_inclusive_range' panicked at src/lib.rs:21:9"
+text.ru = "На что указывает `src/lib.rs:21:9`?"
+text.en = "What does `src/lib.rs:21:9` point to?"
+text.uz = "`src/lib.rs:21:9` nimani ko‘rsatadi?"
+options = [
+  { ru = "На строку с ошибкой в реализации", en = "The line with the bug in the implementation", uz = "Amalga oshirishdagi xato satrini" },
+  { ru = "На строку с проверкой, которая не выполнилась", en = "The line with the assertion that failed", uz = "Bajarilmagan tekshiruv satrini" },
+  { ru = "На начало файла с тестами", en = "The start of the test file", uz = "Test faylining boshini" },
+]
+answer = 1
+explanation.ru = "Паника происходит в `assert_eq!`. Где ошибка в коде, тест не знает — это предстоит выяснить вам."
+explanation.en = "The panic happens inside `assert_eq!`. The test does not know where the bug is — that is for you to find out."
+explanation.uz = "Panika `assert_eq!` ichida yuz beradi. Kodda xato qayerdaligini test bilmaydi — buni siz aniqlaysiz."
+
+[[question]]
+id = "compile-error"
+code = """error[E0425]: cannot find function `parse_rnge` in this scope
+error: could not compile `ranges` (lib test) due to 1 previous error"""
+text.ru = "Что это значит для тестов?"
+text.en = "What does this mean for the tests?"
+text.uz = "Bu testlar uchun nimani anglatadi?"
+options = [
+  { ru = "Один тест упал", en = "One test failed", uz = "Bitta test yiqildi" },
+  { ru = "Тесты вообще не запускались — сначала надо починить сборку", en = "The tests did not run at all — fix the build first", uz = "Testlar umuman ishlamagan — avval yig‘ishni tuzatish kerak" },
+  { ru = "Все тесты прошли, это предупреждение", en = "All tests passed; it is a warning", uz = "Barcha testlar o‘tdi, bu ogohlantirish" },
+]
+answer = 1
+explanation.ru = "Ошибка компиляции останавливает всё до запуска тестов. Здесь опечатка в имени функции."
+explanation.en = "A compilation error stops everything before the tests run. Here it is a typo in a function name."
+explanation.uz = "Kompilyatsiya xatosi testlar ishga tushishidan oldin hammasini to‘xtatadi. Bu yerda funksiya nomida xato."

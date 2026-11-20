@@ -150,6 +150,9 @@ pub trait GitPort: Send + Sync {
     fn log(&self, repo: &Path, since: Option<&str>, limit: usize) -> AppResult<Vec<CommitSummary>>;
     fn tracked_files(&self, repo: &Path) -> AppResult<Vec<String>>;
     fn grep(&self, repo: &Path, needle: &str, max: usize) -> AppResult<Vec<SourceMatch>>;
+    /// Initialises a repository with all files of `path` in one commit;
+    /// returns the commit hash.
+    fn init_with_commit(&self, path: &Path, message: &str) -> AppResult<String>;
 }
 
 // ---- projects, languages, workspaces, editor ------------------------------
@@ -173,6 +176,8 @@ pub trait WorkspaceLayout: Send + Sync {
     fn workspace_for(&self, project: &Project, task: &Task) -> PathBuf;
     /// Directory for a clone of a remote project.
     fn project_cache(&self, project_name: &str) -> PathBuf;
+    /// Directory for a practice project created by a learning program.
+    fn practice_dir(&self, name: &str) -> PathBuf;
 }
 
 pub trait IdeLauncher: Send + Sync {
@@ -339,4 +344,36 @@ pub trait SandboxRunRepository: Send + Sync {
     async fn for_session(&self, session: &SessionId) -> AppResult<Vec<est_domain::SandboxRun>>;
     /// Marks runs left `running` by a previous daemon as failed; returns how many.
     async fn fail_interrupted(&self) -> AppResult<u64>;
+}
+
+// ---- learning --------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LessonStatus {
+    NotStarted,
+    Started,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct LessonProgress {
+    pub program_id: String,
+    pub lesson_id: String,
+    pub status: LessonStatus,
+    /// Best score, 0–100 (quizzes and artifacts).
+    pub score: Option<u8>,
+    pub attempts: u32,
+    pub detail: serde_json::Value,
+    pub updated_at: est_core::Timestamp,
+}
+
+#[async_trait]
+pub trait LearningProgressRepository: Send + Sync {
+    async fn progress(
+        &self,
+        user: &UserId,
+        program: Option<&str>,
+    ) -> AppResult<Vec<LessonProgress>>;
+    async fn save_progress(&self, user: &UserId, progress: &LessonProgress) -> AppResult<()>;
 }

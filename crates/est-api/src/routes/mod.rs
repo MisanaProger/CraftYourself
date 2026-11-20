@@ -9,6 +9,7 @@ use crate::runtime::Runtime;
 
 mod analytics;
 mod conversations;
+mod learning;
 mod projects;
 mod sessions;
 mod tasks;
@@ -74,6 +75,32 @@ pub fn api() -> Router<Runtime> {
         .route(
             "/sessions/{id}/sandbox/runs",
             get(sessions::runs).post(sessions::start_run),
+        )
+        .route("/learning/programs", get(learning::programs))
+        .route("/learning/programs/{id}", get(learning::program))
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}",
+            get(learning::lesson),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/complete",
+            post(learning::complete),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/quiz",
+            post(learning::quiz),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/progress",
+            post(learning::artifact_progress),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/practice",
+            post(learning::practice),
+        )
+        .route(
+            "/learning/artifacts/{id}/{*path}",
+            get(learning::artifact_file),
         )
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))

@@ -38,6 +38,7 @@ pub struct Ports {
     pub llm: Option<Arc<dyn LlmProvider>>,
     pub sandbox: Arc<dyn Sandbox>,
     pub sandbox_runs: Arc<dyn SandboxRunRepository>,
+    pub learning: Arc<dyn LearningProgressRepository>,
 }
 
 #[derive(Debug, Clone, Default)]
