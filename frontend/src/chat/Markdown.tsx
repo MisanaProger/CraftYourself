@@ -1,13 +1,15 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * Minimal, safe Markdown renderer for mentor messages and lessons: headings,
- * fenced code blocks, tables, paragraphs, lists, inline code, bold, italics. Everything is rendered
- * as React text nodes — no HTML from the model ever reaches the DOM.
+ * fenced code blocks, tables, paragraphs, lists, inline code, bold, italics
+ * and LaTeX formulas. Text is rendered as React text nodes — no HTML from the
+ * model ever reaches this page's DOM. Formulas are built by KaTeX as DOM
+ * nodes (`trust: false`: no links, classes, styles or raw HTML).
  */
 const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
 const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
-const BLOCK_START = /^\s*(```|#{1,4}\s|([-*]|\d+\.)\s+|\|)/;
+const BLOCK_START = /^\s*(```|#{1,4}\s|([-*]|\d+\.)\s+|\||\$\$|\\\[)/;
 
 export function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
@@ -22,6 +24,20 @@ export function Markdown({ text }: { text: string }) {
       while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
       i++;
       blocks.push(<CodeBlock key={blocks.length} lang={fence[1]} code={code.join("\n")} />);
+      continue;
+    }
+    const math = line.trim().match(/^(\$\$|\\\[)(.*)$/);
+    if (math) {
+      const close = math[1] === "$$" ? "$$" : "\\]";
+      const body: string[] = [];
+      let rest = math[2];
+      i++;
+      while (!rest.trimEnd().endsWith(close) && i < lines.length) {
+        body.push(rest);
+        rest = lines[i++];
+      }
+      body.push(rest.trimEnd().endsWith(close) ? rest.trimEnd().slice(0, -close.length) : rest);
+      blocks.push(<Tex key={blocks.length} tex={body.join("\n").trim()} display />);
       continue;
     }
     const heading = line.match(/^(#{1,4})\s+(.*)$/);
@@ -86,14 +102,19 @@ export function Markdown({ text }: { text: string }) {
   return <div className="md">{blocks}</div>;
 }
 
+// Inline code, $$display$$, $inline$ (not "$5 and $10"), \(inline\), bold, italics.
+const INLINE = /(`[^`]+`|\$\$[^$]+?\$\$|\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)|\$[^\s$]\$(?!\d)|\\\(.+?\\\)|\*\*[^*]+\*\*|_[^_]+_)/g;
+
 function inline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_)/g;
   let last = 0;
-  for (const m of text.matchAll(re)) {
+  for (const m of text.matchAll(INLINE)) {
     if (m.index! > last) out.push(text.slice(last, m.index));
     const t = m[0];
     if (t.startsWith("`")) out.push(<code key={out.length}>{t.slice(1, -1)}</code>);
+    else if (t.startsWith("$$")) out.push(<Tex key={out.length} tex={t.slice(2, -2)} display />);
+    else if (t.startsWith("$")) out.push(<Tex key={out.length} tex={t.slice(1, -1)} />);
+    else if (t.startsWith("\\(")) out.push(<Tex key={out.length} tex={t.slice(2, -2)} />);
     else if (t.startsWith("**")) out.push(<strong key={out.length}>{t.slice(2, -2)}</strong>);
     else out.push(<em key={out.length}>{t.slice(1, -1)}</em>);
     last = m.index! + t.length;
@@ -123,5 +144,52 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
         ))}
       </pre>
     </figure>
+  );
+}
+
+type Katex = typeof import("katex").default;
+let katex: Promise<Katex> | null = null;
+
+/** KaTeX and its fonts load on first use, not with the app. */
+function loadKatex(): Promise<Katex> {
+  katex ??= Promise.all([import("katex"), import("katex/dist/katex.min.css")]).then(([k]) => k.default);
+  return katex;
+}
+
+/**
+ * A LaTeX formula. KaTeX builds DOM nodes itself (no `innerHTML`); with
+ * `trust: false` commands like \\href or \\htmlClass are rejected, and size
+ * limits stop pathological input. Until it loads, the source is shown.
+ */
+function Tex({ tex, display = false }: { tex: string; display?: boolean }) {
+  const target = useRef<HTMLSpanElement>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    loadKatex()
+      .then((k) => {
+        if (!live || !target.current) return;
+        k.render(tex, target.current, {
+          displayMode: display,
+          throwOnError: false,
+          trust: false,
+          strict: "ignore",
+          maxSize: 40,
+          maxExpand: 300,
+          output: "htmlAndMathml",
+        });
+        setReady(true);
+      })
+      .catch(() => live && setReady(false));
+    return () => {
+      live = false;
+    };
+  }, [tex, display]);
+  const Tag = display ? "div" : "span";
+  return (
+    <Tag className={display ? "math math-display" : "math"}>
+      {!ready && <code className="math-src">{tex}</code>}
+      <span ref={target} />
+    </Tag>
   );
 }
