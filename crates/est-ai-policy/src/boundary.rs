@@ -39,6 +39,11 @@ pub enum QueryKind {
     Conceptual,
     /// Everything else: debugging, hypotheses, planning. Governed by help levels.
     Mentoring,
+    /// "What are the acceptance criteria?" — allowed from L0: criteria describe
+    /// observable outcomes, not the solution.
+    AcceptanceCriteria,
+    /// Translation of a text the learner provides — allowed from L0.
+    Translation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -55,7 +60,25 @@ pub enum BoundaryDecision {
     Refuse { reason: String },
 }
 
+/// Largest text (question + excerpt) the mentor translates in one request:
+/// translating whole reference pages would bypass the documentation boundary.
+pub const MAX_TRANSLATION_CHARS: usize = 3000;
+
 pub fn decide(kind: &QueryKind, req: &MentorRequest) -> BoundaryDecision {
+    if *kind == QueryKind::Translation {
+        let size =
+            req.question.chars().count() + req.excerpt.as_deref().map_or(0, |e| e.chars().count());
+        return if size > MAX_TRANSLATION_CHARS {
+            BoundaryDecision::Refuse {
+                reason: format!(
+                    "translate at most {MAX_TRANSLATION_CHARS} characters at a time: pick the part \
+                     you need, not the whole page"
+                ),
+            }
+        } else {
+            BoundaryDecision::Answer
+        };
+    }
     match (kind, req.excerpt.as_deref().map(str::trim)) {
         (_, Some(ex)) if !ex.is_empty() => {
             if ex.chars().count() > MAX_EXCERPT_CHARS {
@@ -191,7 +214,34 @@ pub fn extract_symbols(text: &str) -> (Vec<String>, Vec<String>) {
     (strong, weak)
 }
 
+re!(
+    TRANSLATION,
+    r"(?ix)
+      \bпереведи | \bперевести | \bперевод\w*\s+(на|с)\s
+    | \btranslat(e|ion)\b
+    | \btarjima\b | \btarjima\s+qil | o['ʻ‘]?gir
+    "
+);
+
+re!(
+    CRITERIA,
+    r"(?ix)
+      критери\w*\s+(при[её]мки|готовности|выполнени\w*|успеха)
+    | когда\s+(эт\w+\s+)?(задач\w*|issue)\s+(будет\s+)?(счита\w*\s+)?(выполнен|готов|решен|сделан)
+    | \bdefinition\s+of\s+done\b | \bacceptance\s+criteria\b
+    | \bwhen\s+is\s+(the|this)\s+(task|issue)\s+(done|complete|finished)\b
+    | qabul\s+qilish\s+mezon
+    "
+);
+
 pub fn classify(question: &str) -> QueryKind {
+    // Service requests come first: they never reveal the solution.
+    if TRANSLATION.is_match(question) {
+        return QueryKind::Translation;
+    }
+    if CRITERIA.is_match(question) {
+        return QueryKind::AcceptanceCriteria;
+    }
     let (strong, weak) = extract_symbols(question);
     let api_strong = API_STRONG.is_match(question);
     let api_weak = API_WEAK.is_match(question);
@@ -291,6 +341,46 @@ mod tests {
         ] {
             assert!(!is_api(q), "{q}");
         }
+    }
+
+    #[test]
+    fn service_requests() {
+        for q in [
+            "Сформулируй критерии приёмки для этой задачи",
+            "Какие критерии приемки?",
+            "Когда эта задача будет считаться выполненной?",
+            "What are the acceptance criteria?",
+            "Definition of done for this issue?",
+        ] {
+            assert_eq!(classify(q), QueryKind::AcceptanceCriteria, "{q}");
+        }
+        for q in [
+            "Переведи на русский: Returns an iterator over the lines",
+            "Translate this paragraph into Uzbek",
+            "Shu matnni tarjima qil",
+        ] {
+            assert_eq!(classify(q), QueryKind::Translation, "{q}");
+        }
+        assert_eq!(
+            classify("Что делает функция `foo`?"),
+            classify("Что делает функция `foo`?")
+        );
+        let huge = MentorRequest {
+            question: format!("Переведи: {}", "x".repeat(MAX_TRANSLATION_CHARS)),
+            excerpt: None,
+        };
+        assert!(matches!(
+            decide(&QueryKind::Translation, &huge),
+            BoundaryDecision::Refuse { .. }
+        ));
+        let api_in_translation = MentorRequest {
+            question: "Переведи: what does `Vec::retain` return".into(),
+            excerpt: None,
+        };
+        assert_eq!(
+            decide(&classify(&api_in_translation.question), &api_in_translation),
+            BoundaryDecision::Answer
+        );
     }
 
     #[test]

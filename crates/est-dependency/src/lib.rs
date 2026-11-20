@@ -42,6 +42,12 @@ pub struct ObservedFeatures {
     pub answers_by_level: [u32; 5],
     /// Conceptual questions (small weight by design, §10.9).
     pub conceptual_questions: u32,
+    /// Test runs started by the learner in the sandbox.
+    #[serde(default)]
+    pub test_runs: u32,
+    /// Acceptance criteria and translations: learning support, no weight.
+    #[serde(default)]
+    pub service_answers: u32,
     /// Questions answered by routing to documentation / source code.
     pub documentation_redirects: u32,
     /// Escalations accepted / rejected by the learner.
@@ -114,6 +120,7 @@ pub fn score_issue(f: &ObservedFeatures) -> IssueScore {
     add(f.answers_by_level[1], 1.0, 8.0, "подсказки (L1)");
     add(f.conceptual_questions, 0.5, 4.0, "концептуальные вопросы");
     add(f.own_commits, -6.0, 18.0, "собственные коммиты");
+    add(f.test_runs, -2.0, 8.0, "самостоятельные запуски тестов");
     add(
         f.escalations_rejected,
         -2.0,

@@ -15,6 +15,7 @@ est-core.workspace = true
 est-domain.workspace = true
 est-git.workspace = true
 est-projects.workspace = true
+est-sandbox.workspace = true
 est-storage.workspace = true
 est-workspace.workspace = true
 serde.workspace = true

@@ -55,6 +55,9 @@ pub struct ExerciseInfo {
     #[serde(default)]
     /// Discipline ids from the Engineering Skill Matrix catalog.
     pub disciplines: Vec<String>,
+    /// Observable conditions under which the exercise counts as done.
+    #[serde(default)]
+    pub acceptance_criteria: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -353,6 +356,7 @@ impl ExerciseManifest {
             disciplines: ex.disciplines.clone(),
             base_revision: Some(self.source.revision.clone()),
             test_command: Some(self.commands.test.clone()),
+            acceptance_criteria: ex.acceptance_criteria.clone(),
             mentor: Some(MentorSettings {
                 max_level: self.mentor.max_level,
                 denied_paths: self.mentor.denied_paths.clone(),

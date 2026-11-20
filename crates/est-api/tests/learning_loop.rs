@@ -9,7 +9,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use est_api::{Config, Runtime, router};
 use est_application::AppResult;
-use est_application::ports::{LlmProvider, LlmRequest, LlmResponse, ProviderInfo};
+use est_application::ports::{
+    LlmProvider, LlmRequest, LlmResponse, ProviderInfo, Sandbox, SandboxInfo, SandboxOutcome,
+    SandboxRequest,
+};
 use est_git::{Identity, Repo};
 use est_workspace::EstHome;
 use http_body_util::BodyExt;
@@ -44,10 +47,53 @@ impl LlmProvider for FakeLlm {
     }
 }
 
+/// Records sandbox requests and pretends `cargo test` ran.
+#[derive(Default)]
+struct FakeSandbox {
+    requests: Mutex<Vec<SandboxRequest>>,
+    discarded: Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl Sandbox for FakeSandbox {
+    fn info(&self) -> SandboxInfo {
+        SandboxInfo {
+            runtime: Some("fake".into()),
+            available: true,
+            reason: None,
+            limits: json!({}),
+        }
+    }
+
+    async fn run(&self, request: SandboxRequest) -> AppResult<SandboxOutcome> {
+        let failing = request.command.contains("fail");
+        self.requests.lock().unwrap().push(request);
+        Ok(SandboxOutcome {
+            exit_code: Some(if failing { 101 } else { 0 }),
+            stdout: if failing {
+                "test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out"
+                    .into()
+            } else {
+                "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out".into()
+            },
+            stderr: String::new(),
+            duration_ms: 1200,
+            timed_out: false,
+            image: "fake-image".into(),
+        })
+    }
+
+    async fn discard(&self, cache_key: &str) -> AppResult<()> {
+        self.discarded.lock().unwrap().push(cache_key.into());
+        Ok(())
+    }
+}
+
 struct Harness {
     app: Router,
     rt: Runtime,
     llm: Arc<FakeLlm>,
+    sandbox: Arc<FakeSandbox>,
     _dir: tempfile::TempDir,
     origin: PathBuf,
     revision: String,
@@ -94,10 +140,12 @@ async fn harness() -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let (origin, revision) = make_origin(dir.path());
     let llm = Arc::new(FakeLlm::default());
+    let sandbox = Arc::new(FakeSandbox::default());
     let rt = Runtime::build_with(
         EstHome::new(dir.path().join(".est")),
         Config::default(),
         Some(llm.clone()),
+        sandbox.clone(),
     )
     .await
     .unwrap();
@@ -105,6 +153,7 @@ async fn harness() -> Harness {
         app: router(rt.clone(), None),
         rt,
         llm,
+        sandbox,
         _dir: dir,
         origin,
         revision,
@@ -144,6 +193,17 @@ impl Harness {
 
     async fn post(&self, uri: &str, body: Value) -> (StatusCode, Value) {
         self.call("POST", uri, Some(body)).await
+    }
+
+    async fn wait_run(&self, id: &str) -> Value {
+        for _ in 0..100 {
+            let (_, run) = self.get(&format!("/api/v1/sandbox/runs/{id}")).await;
+            if run["status"] != "running" {
+                return run;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("run {id} did not finish");
     }
 
     fn llm_calls(&self) -> usize {
@@ -301,6 +361,51 @@ async fn full_learning_loop() {
     assert_eq!(h.llm_calls(), 1);
     assert!(h.llm.requests.lock().unwrap()[0].system.contains("L0"));
 
+    // At L0 the mentor still formulates acceptance criteria and translates.
+    let r = h
+        .say(&conv, "Сформулируй критерии приёмки для этой задачи")
+        .await;
+    assert_eq!(
+        (r[0]["role"].as_str(), r[0]["level"].as_u64()),
+        (Some("assistant"), Some(0))
+    );
+    assert_eq!(
+        r[0]["meta"]["decision"]["kind"]["type"],
+        "acceptance_criteria"
+    );
+    let prompt = h
+        .llm
+        .requests
+        .lock()
+        .unwrap()
+        .last()
+        .unwrap()
+        .system
+        .clone();
+    assert!(
+        prompt.contains("критерии приёмки") && !prompt.contains("отвечай только вопросами"),
+        "{prompt}"
+    );
+    let r = h
+        .say(
+            &conv,
+            "Переведи на русский: Returns the number of elements.",
+        )
+        .await;
+    assert_eq!(r[0]["meta"]["decision"]["kind"]["type"], "translation");
+    assert_eq!(h.llm_calls(), 3);
+    assert_eq!(h.level(&conv).await, 0, "service requests never escalate");
+    let (s, t) = h
+        .call(
+            "PUT",
+            &format!("/api/v1/tasks/{tid}/acceptance-criteria"),
+            Some(json!({ "criteria": [{ "text": "parse_range(\"1..3\") returns [1, 2, 3]" }, { "text": "  " }, { "text": "Regression test added", "done": true }] })),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{t}");
+    assert_eq!(t["acceptance_criteria"].as_array().unwrap().len(), 2);
+    assert_eq!(t["acceptance_criteria"][1]["done"], true);
+
     // Above the level: blocked, one-step escalation proposed, no model call.
     let r = h.say(&conv, "Дай полное решение").await;
     assert_eq!(r[0]["role"], "system");
@@ -315,7 +420,7 @@ async fn full_learning_loop() {
     );
     assert_eq!(
         h.llm_calls(),
-        1,
+        3,
         "a blocked request never reaches the model"
     );
     let esc = card["escalation_id"].as_str().unwrap().to_owned();
@@ -365,7 +470,7 @@ async fn full_learning_loop() {
         (Some("assistant"), Some(2))
     );
     assert_eq!(h.level(&conv).await, 2);
-    assert_eq!(h.llm_calls(), 2);
+    assert_eq!(h.llm_calls(), 4);
     let (_, view) = h.get(&format!("/api/v1/conversations/{conv}")).await;
     assert!(view["pending_escalation"].is_null());
     let statuses: Vec<_> = view["messages"]
@@ -388,7 +493,7 @@ async fn full_learning_loop() {
         .map(|l| l["target"].as_str().unwrap())
         .collect();
     assert_eq!(targets, ["src/lib.rs:1"]);
-    assert_eq!(h.llm_calls(), 2);
+    assert_eq!(h.llm_calls(), 4);
 
     // A new Issue starts at L0 again; the previous level is not inherited.
     let other = h.task(&pid, "Second issue").await;
@@ -422,6 +527,59 @@ async fn full_learning_loop() {
         .await;
     assert!(diff.as_str().unwrap().contains("..=b.parse"));
 
+    // Tests run in the sandbox: asynchronously, offline, result in the chat.
+    let (s, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(run["status"], "running");
+    let run = h.wait_run(run["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "passed", "{run}");
+    assert_eq!(
+        run["summary"],
+        json!({ "passed": 3, "failed": 0, "ignored": 0 })
+    );
+    {
+        let reqs = h.sandbox.requests.lock().unwrap();
+        assert_eq!(
+            reqs[0].command, "cargo test",
+            "detected by the Rust adapter"
+        );
+        assert!(!reqs[0].network, "no network by default");
+        assert_eq!(reqs[0].workspace, ws);
+    }
+    let (_, view) = h.get(&format!("/api/v1/conversations/{conv}")).await;
+    let last = view["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["cards"][0]["type"], "sandbox_run");
+    assert_eq!(last["cards"][0]["summary"]["passed"], 3);
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "setup" }),
+        )
+        .await;
+    assert_eq!(
+        s,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "network needs explicit permission"
+    );
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "custom", "command": "cargo test fail_case" }),
+        )
+        .await;
+    let run = h.wait_run(run["id"].as_str().unwrap()).await;
+    assert_eq!(
+        (run["status"].as_str(), run["summary"]["failed"].as_u64()),
+        (Some("failed"), Some(1))
+    );
+    let (_, runs) = h.get(&format!("/api/v1/sessions/{sid}/sandbox/runs")).await;
+    assert_eq!(runs.as_array().unwrap().len(), 2);
+
     // The conversation of an Issue in progress cannot be deleted.
     let (s, _) = h
         .call("DELETE", &format!("/api/v1/conversations/{conv}"), None)
@@ -443,6 +601,16 @@ async fn full_learning_loop() {
         json!([1, 0, 1, 0, 0])
     );
     assert_eq!(item["observed_features"]["own_commits"], 1);
+    assert_eq!(item["observed_features"]["test_runs"], 1);
+    assert_eq!(
+        *h.sandbox.discarded.lock().unwrap(),
+        vec![sid.to_owned()],
+        "build cache removed with the session"
+    );
+    assert_eq!(
+        item["observed_features"]["service_answers"], 2,
+        "criteria and translation do not count as dependence"
+    );
     assert_eq!(item["observed_features"]["escalations_accepted"], 2);
     assert!(
         adi["disclaimer"]

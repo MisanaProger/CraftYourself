@@ -63,7 +63,22 @@ pub enum Card {
         status: String,
     },
     /// Something the policy removed or limited in the answer.
-    PolicyNotice { text: String },
+    PolicyNotice {
+        text: String,
+        /// Stable code for localized rendering (`code_removed`, `capped`).
+        #[serde(default)]
+        code: Option<String>,
+    },
+    /// Result of a sandbox run, shown in the timeline.
+    SandboxRun {
+        run_id: String,
+        kind: crate::RunKind,
+        command: String,
+        status: crate::RunStatus,
+        summary: Option<crate::TestSummary>,
+        exit_code: Option<i32>,
+        duration_ms: Option<u64>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

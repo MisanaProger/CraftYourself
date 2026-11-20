@@ -65,11 +65,32 @@ enum Command {
     /// Conversations: list and export.
     #[command(subcommand)]
     Conversation(ConversationCmd),
+    /// Run the task's tests in the sandbox (Podman/Docker).
+    Test(RunArgs),
+    /// Run linters/format checks in the sandbox.
+    Check(RunArgs),
+    /// Sandbox runtime and limits.
+    Sandbox,
     /// AI Dependency Index with double decay.
     Adi,
     /// Your data.
     #[command(subcommand)]
     Data(DataCmd),
+}
+
+#[derive(Args)]
+struct RunArgs {
+    /// Command line to run instead of the detected one.
+    #[arg(long)]
+    command: Option<String>,
+    /// Allow network access for this run (e.g. to fetch dependencies).
+    #[arg(long)]
+    allow_network: bool,
+    /// Fetch dependencies (`cargo fetch`, pip) — implies network access.
+    #[arg(long)]
+    setup: bool,
+    #[command(flatten)]
+    sel: SessionSel,
 }
 
 #[derive(Subcommand)]
@@ -325,7 +346,19 @@ fn print_messages(messages: &[Message]) {
                     from.code(),
                     to.code()
                 ),
-                Card::PolicyNotice { text } => println!("  ! {text}"),
+                Card::PolicyNotice { text, .. } => println!("  ! {text}"),
+                Card::SandboxRun {
+                    command,
+                    status,
+                    summary,
+                    ..
+                } => match summary {
+                    Some(s) => println!(
+                        "  ▶ {command}: {status:?} — {} passed, {} failed",
+                        s.passed, s.failed
+                    ),
+                    None => println!("  ▶ {command}: {status:?}"),
+                },
             }
         }
     }
@@ -343,6 +376,7 @@ fn session_line(s: &LearningSession) -> String {
 
 async fn run(ctx: &Ctx, command: Command) -> Result<()> {
     let app = &ctx.app;
+    let is_check = matches!(command, Command::Check(_));
     match command {
         Command::Init | Command::Serve => unreachable!("handled before the runtime starts"),
 
@@ -484,6 +518,7 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
                     disciplines: vec![],
                     base_revision: c.base,
                     test_command: None,
+                    acceptance_criteria: vec![],
                     mentor: None,
                     docs: vec![],
                 })
@@ -673,6 +708,71 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
                 .ok_or_else(|| anyhow!("no conversation matches `{id}`"))?;
             let view: ConversationView = app.conversation_view(&conv.id).await?;
             print_json(&view)?;
+        }
+        Command::Sandbox => {
+            let info = app.sandbox_info();
+            if ctx.json {
+                return print_json(&info);
+            }
+            match &info.runtime {
+                Some(r) => println!("sandbox: {r}"),
+                None => println!(
+                    "sandbox unavailable: {}",
+                    info.reason.clone().unwrap_or_default()
+                ),
+            }
+            println!("limits: {}", info.limits);
+        }
+        Command::Test(args) | Command::Check(args) => {
+            let kind = if args.setup {
+                est_domain::RunKind::Setup
+            } else if args.command.is_some() {
+                est_domain::RunKind::Custom
+            } else if is_check {
+                est_domain::RunKind::Check
+            } else {
+                est_domain::RunKind::Test
+            };
+            let s = ctx.session(&args.sel).await?;
+            if !ctx.json {
+                eprintln!("running in the sandbox…");
+            }
+            let run = app
+                .run_and_wait(
+                    &s.id,
+                    est_application::RunRequest {
+                        kind,
+                        command: args.command,
+                        workdir: None,
+                        allow_network: args.allow_network || args.setup,
+                    },
+                )
+                .await?;
+            if ctx.json {
+                return print_json(&run);
+            }
+            print!("{}", run.stdout);
+            eprint!("{}", run.stderr);
+            if let Some(e) = &run.error {
+                eprintln!("error: {e}");
+            }
+            println!(
+                "\n{} — {:?}{}{}",
+                run.command,
+                run.status,
+                run.summary
+                    .map(|s| format!(
+                        ", {} passed, {} failed, {} ignored",
+                        s.passed, s.failed, s.ignored
+                    ))
+                    .unwrap_or_default(),
+                run.duration_ms
+                    .map(|d| format!(" in {:.1}s", d as f64 / 1000.0))
+                    .unwrap_or_default()
+            );
+            if run.status != est_domain::RunStatus::Passed {
+                std::process::exit(1);
+            }
         }
         Command::Adi => {
             let o = app.adi_overview().await?;

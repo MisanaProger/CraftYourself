@@ -59,6 +59,14 @@ impl Default for MentorSettings {
     }
 }
 
+/// An observable condition under which the Issue counts as done.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceptanceCriterion {
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+}
+
 /// Primary source curated by the task author.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocReference {
@@ -85,6 +93,7 @@ pub struct Task {
     pub base_revision: Option<String>,
     /// Command to run the task's tests (executed by the sandbox).
     pub test_command: Option<String>,
+    pub acceptance_criteria: Vec<AcceptanceCriterion>,
     pub mentor: MentorSettings,
     pub docs: Vec<DocReference>,
     pub created_at: Timestamp,
@@ -108,6 +117,8 @@ pub struct NewTask {
     pub base_revision: Option<String>,
     #[serde(default)]
     pub test_command: Option<String>,
+    #[serde(default)]
+    pub acceptance_criteria: Vec<String>,
     #[serde(default)]
     pub mentor: Option<MentorSettings>,
     #[serde(default)]

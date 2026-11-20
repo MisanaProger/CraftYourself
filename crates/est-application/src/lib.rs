@@ -9,11 +9,13 @@ mod analytics;
 mod conversation;
 mod error;
 pub mod ports;
+pub mod sandbox;
 mod service;
 
 pub use analytics::{AdiHistoryItem, AdiOverview, PrivacySettings, SkillMatrix};
 pub use conversation::{ConversationView, NewConversation, PostMessage};
 pub use error::{AppError, AppResult};
+pub use sandbox::RunRequest;
 pub use service::{
     AddProject, App, AppSettings, Ports, SessionOverview, StartedSession, name_from_source,
 };

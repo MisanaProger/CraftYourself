@@ -23,6 +23,7 @@ est-languages = { path = "crates/est-languages" }
 est-ai-policy = { path = "crates/est-ai-policy" }
 est-documentation = { path = "crates/est-documentation" }
 est-ai = { path = "crates/est-ai" }
+est-sandbox = { path = "crates/est-sandbox" }
 est-dependency = { path = "crates/est-dependency" }
 est-discipline = { path = "crates/est-discipline" }
 

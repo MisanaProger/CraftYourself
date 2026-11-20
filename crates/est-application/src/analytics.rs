@@ -66,13 +66,17 @@ impl App {
             match e.event.kind.as_str() {
                 events::AI_ANSWER => {
                     let level = p["level"].as_u64().unwrap_or(0).min(4) as usize;
-                    if p["query_kind"]["type"] == "conceptual" {
+                    let kind = &p["query_kind"]["type"];
+                    if kind == "acceptance_criteria" || kind == "translation" {
+                        f.service_answers += 1;
+                    } else if kind == "conceptual" {
                         f.conceptual_questions += 1;
                     } else {
                         f.answers_by_level[level] += 1;
                     }
                 }
                 events::DOCS_REDIRECT => f.documentation_redirects += 1,
+                crate::sandbox::events::RUN_FINISHED if p["kind"] == "test" => f.test_runs += 1,
                 events::ESCALATION_ACCEPTED => {
                     f.escalations_accepted += 1;
                     f.max_level = f.max_level.max(p["to"].as_u64().unwrap_or(0) as u8);

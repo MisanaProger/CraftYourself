@@ -17,6 +17,8 @@ pub enum CodeAllowance {
     PartialSolution,
     /// A full worked solution, explained step by step.
     FullWalkthrough,
+    /// Only code copied from the text being translated.
+    PreserveSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -37,6 +39,24 @@ impl ResponseConstraints {
             Demonstration => (CodeAllowance::PartialSolution, Some(30)),
             Active => (CodeAllowance::FullWalkthrough, None),
         };
+        match kind {
+            QueryKind::AcceptanceCriteria => {
+                return Self {
+                    code: CodeAllowance::None,
+                    max_code_lines: Some(0),
+                    questions_only: false,
+                };
+            }
+            QueryKind::Translation => {
+                // The real limit (code lines in the source) is set by `route`.
+                return Self {
+                    code: CodeAllowance::PreserveSource,
+                    max_code_lines: Some(0),
+                    questions_only: false,
+                };
+            }
+            _ => {}
+        }
         // Domain concepts may always be illustrated, independent of the task.
         if *kind == QueryKind::Conceptual && code == CodeAllowance::None {
             code = CodeAllowance::Illustrative;

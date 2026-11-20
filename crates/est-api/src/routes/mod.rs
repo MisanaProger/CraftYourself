@@ -26,6 +26,10 @@ pub fn api() -> Router<Runtime> {
         .route("/tasks/{id}", get(tasks::get))
         .route("/tasks/{id}/start", post(tasks::start))
         .route("/tasks/{id}/complete", post(tasks::complete))
+        .route(
+            "/tasks/{id}/acceptance-criteria",
+            axum::routing::put(tasks::set_criteria),
+        )
         .route("/tasks/{id}/conversation", get(tasks::conversation))
         .route("/exercises/import", post(tasks::import_exercise))
         .route("/sessions", get(sessions::list))
@@ -64,6 +68,12 @@ pub fn api() -> Router<Runtime> {
         .route(
             "/engagement/escalations/{id}/reject",
             post(conversations::reject),
+        )
+        .route("/sandbox", get(sessions::sandbox_info))
+        .route("/sandbox/runs/{id}", get(sessions::run))
+        .route(
+            "/sessions/{id}/sandbox/runs",
+            get(sessions::runs).post(sessions::start_run),
         )
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))

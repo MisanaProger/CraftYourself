@@ -62,7 +62,16 @@ pub fn route(
 ) -> RouteDecision {
     let kind = classify(&request.question);
     let level = state.level;
-    let constraints = ResponseConstraints::for_request(&kind, level);
+    let mut constraints = ResponseConstraints::for_request(&kind, level);
+    if kind == QueryKind::Translation {
+        // A translation may repeat the source's code, never add new code.
+        let source = format!(
+            "{}\n{}",
+            request.question,
+            request.excerpt.as_deref().unwrap_or("")
+        );
+        constraints.max_code_lines = Some(constraints::fenced_code_lines(&source));
+    }
     let decision = |required, outcome, capped| RouteDecision {
         kind: kind.clone(),
         required,
@@ -156,6 +165,28 @@ mod tests {
         );
         assert_eq!(d.outcome, Outcome::Answer);
         assert!(d.capped);
+    }
+
+    #[test]
+    fn criteria_and_translation_are_allowed_at_l0() {
+        let d = route(
+            &ask("Сформулируй критерии приёмки"),
+            &state(Socratic, Active),
+            true,
+        );
+        assert_eq!(
+            (d.outcome.clone(), d.kind.clone()),
+            (Outcome::Answer, QueryKind::AcceptanceCriteria)
+        );
+        assert!(!d.constraints.questions_only);
+        assert_eq!(d.constraints.max_code_lines, Some(0));
+        let d = route(
+            &ask("Переведи на русский:\n```\nlet a = 1;\n```\nReturns the value."),
+            &state(Socratic, Active),
+            true,
+        );
+        assert_eq!((d.outcome.clone(), d.level), (Outcome::Answer, Socratic));
+        assert_eq!(d.constraints.max_code_lines, Some(1));
     }
 
     #[test]

@@ -24,6 +24,8 @@ pub struct Config {
     pub llm: Option<ProviderConfig>,
     /// ADI double-decay parameters (`[adi]`).
     pub adi: Option<DecayParams>,
+    /// Sandbox Manager (`[sandbox]`): runtime, images and limits.
+    pub sandbox: est_sandbox::SandboxConfig,
 }
 
 impl Default for Config {
@@ -35,6 +37,7 @@ impl Default for Config {
             allowed_hosts: Vec::new(),
             llm: None,
             adi: None,
+            sandbox: est_sandbox::SandboxConfig::default(),
         }
     }
 }
@@ -96,6 +99,16 @@ bind = "127.0.0.1:7878"
 # A remote provider must use https; the key is read from an environment
 # variable and never stored here:
 # api_key_env = "CRAFT_LLM_API_KEY"
+
+# Sandbox for build/test runs: Podman or Docker. Network is off unless you
+# allow it for a run; the workspace is mounted read-only.
+# [sandbox]
+# runtime = "auto"          # auto | podman | docker
+# cpus = 2.0
+# memory_mb = 2048
+# timeout_secs = 600
+# [sandbox.images]
+# rust = "docker.io/library/rust:1-slim"
 
 # ADI double decay (preliminary MVP values).
 # [adi]

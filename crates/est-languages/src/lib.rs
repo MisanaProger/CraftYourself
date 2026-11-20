@@ -13,6 +13,9 @@ use std::path::Path;
 use est_domain::{CommandKind, CommandSpec, LanguageDetection};
 
 pub mod adapters;
+mod summary;
+
+pub use summary::summarize_tests;
 
 pub trait LanguageAdapter: Send + Sync {
     fn id(&self) -> &'static str;

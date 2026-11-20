@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use est_application::Ports;
-use est_application::ports::{EventPublisher, LlmProvider};
+use est_application::ports::{EventPublisher, LlmProvider, Sandbox};
 use est_application::{App, AppSettings};
 use est_core::DomainEvent;
 use est_git::port::CliGit;
@@ -39,7 +39,10 @@ impl Runtime {
             Some(cfg) => Some(Arc::new(est_ai::OpenAiCompatible::new(cfg)?)),
             None => None,
         };
-        Self::build_with(home, config, llm).await
+        let sandbox: Arc<dyn Sandbox> = Arc::new(est_sandbox::ContainerSandbox::detect(
+            config.sandbox.clone(),
+        ));
+        Self::build_with(home, config, llm, sandbox).await
     }
 
     /// Like [`Runtime::build`] with an explicit LLM provider (tests, embedding).
@@ -47,6 +50,7 @@ impl Runtime {
         home: EstHome,
         config: Config,
         llm: Option<Arc<dyn LlmProvider>>,
+        sandbox: Arc<dyn Sandbox>,
     ) -> anyhow::Result<Self> {
         home.init()?;
         let store = Arc::new(SqliteStore::open(&home.database_file()).await?);
@@ -60,7 +64,9 @@ impl Runtime {
             conversations: store.clone(),
             engagement: store.clone(),
             adi: store.clone(),
-            export: store,
+            export: store.clone(),
+            sandbox_runs: store,
+            sandbox,
             llm,
             publisher: Arc::new(BroadcastPublisher(events.clone())),
             git: Arc::new(CliGit::default()),

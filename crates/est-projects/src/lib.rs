@@ -24,6 +24,10 @@ impl ProjectInspector for Inspector {
     fn commands(&self, root: &Path, files: &[String]) -> Vec<CommandSpec> {
         self.languages.commands(root, files)
     }
+
+    fn summarize_tests(&self, output: &str) -> Option<est_domain::TestSummary> {
+        est_languages::summarize_tests(output)
+    }
 }
 
 /// Best-effort SPDX identifier of the project's license.

@@ -9,8 +9,8 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
-    EventLog, ProjectRepository, SessionRepository, StoredEvent, TaskRepository, User,
-    UserRepository,
+    EventLog, ProjectRepository, SandboxRunRepository, SessionRepository, StoredEvent,
+    TaskRepository, User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -163,6 +163,7 @@ fn task_from_row(r: &SqliteRow) -> AppResult<Task> {
         disciplines: from_json("disciplines", r.get("skills"))?,
         base_revision: r.get("base_revision"),
         test_command: r.get("test_command"),
+        acceptance_criteria: from_json("acceptance criteria", r.get("acceptance_criteria"))?,
         mentor: from_json("mentor settings", r.get("mentor"))?,
         docs: from_json("docs", r.get("docs"))?,
         created_at: r.get("created_at"),
@@ -296,8 +297,9 @@ impl TaskRepository for SqliteStore {
         };
         sqlx::query(
             "INSERT INTO tasks (id, project_id, title, description, task_type, difficulty, status, source, \
-             exercise_id, exercise_version, learning_goals, skills, base_revision, test_command, mentor, docs, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             exercise_id, exercise_version, learning_goals, skills, base_revision, test_command, mentor, docs, created_at, \
+             acceptance_criteria) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id.as_str())
         .bind(t.project_id.as_str())
@@ -316,6 +318,12 @@ impl TaskRepository for SqliteStore {
         .bind(to_json(&t.mentor.clone().unwrap_or_default()))
         .bind(to_json(&t.docs))
         .bind(est_core::now())
+        .bind(to_json(
+            &t.acceptance_criteria
+                .iter()
+                .map(|text| est_domain::AcceptanceCriterion { text: text.clone(), done: false })
+                .collect::<Vec<_>>(),
+        ))
         .execute(&self.pool)
         .await
         .map_err(db)?;
@@ -356,6 +364,23 @@ impl TaskRepository for SqliteStore {
     async fn set_status(&self, id: &TaskId, status: TaskStatus) -> AppResult<()> {
         let res = sqlx::query("UPDATE tasks SET status = ? WHERE id = ?")
             .bind(enum_str(&status))
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(db)?;
+        if res.rows_affected() == 0 {
+            return Err(AppError::NotFound("task".into()));
+        }
+        Ok(())
+    }
+
+    async fn set_acceptance_criteria(
+        &self,
+        id: &TaskId,
+        criteria: &[est_domain::AcceptanceCriterion],
+    ) -> AppResult<()> {
+        let res = sqlx::query("UPDATE tasks SET acceptance_criteria = ? WHERE id = ?")
+            .bind(to_json(&criteria))
             .bind(id.as_str())
             .execute(&self.pool)
             .await
@@ -894,6 +919,124 @@ impl AdiRepository for SqliteStore {
     }
 }
 
+// ---- sandbox runs ----------------------------------------------------------
+
+fn run_from_row(r: &SqliteRow) -> AppResult<est_domain::SandboxRun> {
+    let summary = match (
+        r.get::<Option<i64>, _>("passed"),
+        r.get::<Option<i64>, _>("failed"),
+        r.get::<Option<i64>, _>("ignored"),
+    ) {
+        (Some(p), Some(f), i) => Some(est_domain::TestSummary {
+            passed: p as u32,
+            failed: f as u32,
+            ignored: i.unwrap_or(0) as u32,
+        }),
+        _ => None,
+    };
+    Ok(est_domain::SandboxRun {
+        id: r.get("id"),
+        session_id: SessionId::from(r.get::<String, _>("session_id")),
+        task_id: TaskId::from(r.get::<String, _>("task_id")),
+        kind: parse_enum("run kind", r.get("kind"))?,
+        command: r.get("command"),
+        workdir: r.get("workdir"),
+        image: r.get("image"),
+        network: r.get::<i64, _>("network") != 0,
+        status: parse_enum("run status", r.get("status"))?,
+        exit_code: r.get::<Option<i64>, _>("exit_code").map(|c| c as i32),
+        summary,
+        duration_ms: r.get::<Option<i64>, _>("duration_ms").map(|d| d as u64),
+        stdout: r.get("stdout"),
+        stderr: r.get("stderr"),
+        error: r.get("error"),
+        started_at: r.get("started_at"),
+        finished_at: r.get("finished_at"),
+    })
+}
+
+#[async_trait]
+impl SandboxRunRepository for SqliteStore {
+    async fn create(&self, run: &est_domain::SandboxRun) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sandbox_runs (id, session_id, task_id, kind, command, workdir, network, status, started_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&run.id)
+        .bind(run.session_id.as_str())
+        .bind(run.task_id.as_str())
+        .bind(enum_str(&run.kind))
+        .bind(&run.command)
+        .bind(&run.workdir)
+        .bind(i64::from(run.network))
+        .bind(enum_str(&run.status))
+        .bind(run.started_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn update(&self, run: &est_domain::SandboxRun) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE sandbox_runs SET image = ?, status = ?, exit_code = ?, passed = ?, failed = ?, ignored = ?, \
+             duration_ms = ?, stdout = ?, stderr = ?, error = ?, finished_at = ? WHERE id = ?",
+        )
+        .bind(&run.image)
+        .bind(enum_str(&run.status))
+        .bind(run.exit_code.map(i64::from))
+        .bind(run.summary.map(|s| i64::from(s.passed)))
+        .bind(run.summary.map(|s| i64::from(s.failed)))
+        .bind(run.summary.map(|s| i64::from(s.ignored)))
+        .bind(run.duration_ms.map(|d| d as i64))
+        .bind(&run.stdout)
+        .bind(&run.stderr)
+        .bind(&run.error)
+        .bind(run.finished_at)
+        .bind(&run.id)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn get(&self, id: &str) -> AppResult<Option<est_domain::SandboxRun>> {
+        sqlx::query("SELECT * FROM sandbox_runs WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(run_from_row)
+            .transpose()
+    }
+
+    async fn for_session(&self, session: &SessionId) -> AppResult<Vec<est_domain::SandboxRun>> {
+        sqlx::query(
+            "SELECT * FROM sandbox_runs WHERE session_id = ? ORDER BY started_at DESC, rowid DESC",
+        )
+        .bind(session.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(run_from_row)
+        .collect()
+    }
+
+    async fn fail_interrupted(&self) -> AppResult<u64> {
+        Ok(sqlx::query(
+            "UPDATE sandbox_runs SET status = 'error', error = 'interrupted by a daemon restart', \
+             finished_at = ? WHERE status = 'running'",
+        )
+        .bind(est_core::now())
+        .execute(&self.pool)
+        .await
+        .map_err(db)?
+        .rows_affected())
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -976,6 +1119,7 @@ mod tests {
                 disciplines: vec!["debugging-testing".into()],
                 base_revision: None,
                 test_command: Some("cargo test".into()),
+                acceptance_criteria: vec!["Tests pass".into()],
                 mentor: Some(MentorSettings {
                     max_level: EngagementLevel::Explaining,
                     ..Default::default()
@@ -1088,7 +1232,7 @@ mod tests {
 
         a.finish(est_domain::SessionOutcome::Completed, est_core::now())
             .unwrap();
-        s.update(&a).await.unwrap();
+        SessionRepository::update(&s, &a).await.unwrap();
         assert!(s.active_for_task(&t.id).await.unwrap().is_none());
 
         EventLog::append(
@@ -1109,8 +1253,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(s.for_session(&a.id, None).await.unwrap().len(), 2);
-        let m = s.for_session(&a.id, Some("mentor.request")).await.unwrap();
+        assert_eq!(EventLog::for_session(&s, &a.id, None).await.unwrap().len(), 2);
+        let m = EventLog::for_session(&s, &a.id, Some("mentor.request")).await.unwrap();
         assert_eq!(m.len(), 1);
         assert_eq!(m[0].event.payload["level"], 2);
     }
@@ -1151,7 +1295,10 @@ mod tests {
             "second",
             EngagementLevel::Socratic,
         )
-        .with_card(Card::PolicyNotice { text: "x".into() });
+        .with_card(Card::PolicyNotice {
+            text: "x".into(),
+            code: None,
+        });
         ConversationRepository::append(&s, &m1).await.unwrap();
         ConversationRepository::append(&s, &m2).await.unwrap();
         let all = s.messages(&c.id, None).await.unwrap();

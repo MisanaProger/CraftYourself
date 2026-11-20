@@ -43,6 +43,11 @@ pub trait TaskRepository: Send + Sync {
     async fn get(&self, id: &TaskId) -> AppResult<Option<Task>>;
     async fn list(&self, project: Option<&ProjectId>) -> AppResult<Vec<Task>>;
     async fn set_status(&self, id: &TaskId, status: TaskStatus) -> AppResult<()>;
+    async fn set_acceptance_criteria(
+        &self,
+        id: &TaskId,
+        criteria: &[est_domain::AcceptanceCriterion],
+    ) -> AppResult<()>;
     /// Task imported from exercise `exercise_id` at `version` into `project`.
     async fn find_exercise(
         &self,
@@ -159,6 +164,8 @@ pub trait ProjectInspector: Send + Sync {
     fn inspect(&self, root: &Path, tracked_files: &[String]) -> ProjectInspection;
     /// Build / test / check commands the language adapters suggest.
     fn commands(&self, root: &Path, tracked_files: &[String]) -> Vec<CommandSpec>;
+    /// Pass/fail counts from a test runner's output, if recognisable.
+    fn summarize_tests(&self, output: &str) -> Option<est_domain::TestSummary>;
 }
 
 pub trait WorkspaceLayout: Send + Sync {
@@ -271,4 +278,65 @@ pub struct ProviderInfo {
 pub trait LlmProvider: Send + Sync {
     fn info(&self) -> ProviderInfo;
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse>;
+}
+
+// ---- sandbox ---------------------------------------------------------------
+
+/// One command to execute in isolation.
+#[derive(Debug, Clone)]
+pub struct SandboxRequest {
+    pub run_id: String,
+    /// Host path of the workspace; mounted read-only and copied inside.
+    pub workspace: PathBuf,
+    /// Working directory relative to the workspace root.
+    pub workdir: String,
+    /// Shell command line, interpreted inside the container.
+    pub command: String,
+    /// Selects the container image.
+    pub language: Option<String>,
+    /// Network access; only with the learner's explicit permission.
+    pub network: bool,
+    /// Build cache shared by runs of one session (removed when it ends).
+    pub cache_key: String,
+    /// Dependency cache shared by sessions of one project.
+    pub deps_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SandboxOutcome {
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub duration_ms: u64,
+    pub timed_out: bool,
+    pub image: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SandboxInfo {
+    /// `docker` or `podman`, when one is usable.
+    pub runtime: Option<String>,
+    pub available: bool,
+    /// Why the sandbox is unavailable, if it is.
+    pub reason: Option<String>,
+    pub limits: serde_json::Value,
+}
+
+#[async_trait]
+pub trait Sandbox: Send + Sync {
+    fn info(&self) -> SandboxInfo;
+    async fn run(&self, request: SandboxRequest) -> AppResult<SandboxOutcome>;
+    /// Removes the per-session build cache.
+    async fn discard(&self, cache_key: &str) -> AppResult<()>;
+}
+
+#[async_trait]
+pub trait SandboxRunRepository: Send + Sync {
+    async fn create(&self, run: &est_domain::SandboxRun) -> AppResult<()>;
+    async fn update(&self, run: &est_domain::SandboxRun) -> AppResult<()>;
+    async fn get(&self, id: &str) -> AppResult<Option<est_domain::SandboxRun>>;
+    /// Newest first.
+    async fn for_session(&self, session: &SessionId) -> AppResult<Vec<est_domain::SandboxRun>>;
+    /// Marks runs left `running` by a previous daemon as failed; returns how many.
+    async fn fail_interrupted(&self) -> AppResult<u64>;
 }

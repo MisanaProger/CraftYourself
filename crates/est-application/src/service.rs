@@ -36,6 +36,8 @@ pub struct Ports {
     pub export: Arc<dyn DataExporter>,
     /// AI Gateway provider; `None` when no model is configured.
     pub llm: Option<Arc<dyn LlmProvider>>,
+    pub sandbox: Arc<dyn Sandbox>,
+    pub sandbox_runs: Arc<dyn SandboxRunRepository>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -104,6 +106,8 @@ pub fn name_from_source(source: &str) -> String {
 impl App {
     pub async fn new(ports: Ports, settings: AppSettings) -> AppResult<Self> {
         let user = ports.users.local_user().await?;
+        // Runs cannot survive a daemon restart; record them as failed.
+        ports.sandbox_runs.fail_interrupted().await?;
         Ok(Self {
             ports,
             settings,
@@ -279,6 +283,42 @@ impl App {
             .get(id)
             .await?
             .ok_or_else(|| AppError::NotFound("task".into()))
+    }
+
+    /// Replaces the task's acceptance criteria (written by the learner, or
+    /// saved from a mentor suggestion they accepted).
+    pub async fn set_acceptance_criteria(
+        &self,
+        id: &TaskId,
+        criteria: Vec<est_domain::AcceptanceCriterion>,
+    ) -> AppResult<Task> {
+        let task = self.get_task(id).await?;
+        let criteria: Vec<_> = criteria
+            .into_iter()
+            .map(|c| est_domain::AcceptanceCriterion {
+                text: c.text.trim().to_owned(),
+                done: c.done,
+            })
+            .filter(|c| !c.text.is_empty())
+            .collect();
+        if criteria.len() > 20 || criteria.iter().any(|c| c.text.chars().count() > 500) {
+            return Err(AppError::Invalid(
+                "at most 20 criteria of up to 500 characters".into(),
+            ));
+        }
+        self.ports
+            .tasks
+            .set_acceptance_criteria(&task.id, &criteria)
+            .await?;
+        self.emit(
+            DomainEvent::new(
+                "task.acceptance_criteria.updated",
+                json!({ "count": criteria.len(), "done": criteria.iter().filter(|c| c.done).count() }),
+            )
+            .task(&task.id),
+        )
+        .await?;
+        self.get_task(id).await
     }
 
     /// Imports an Exercise Manifest as a task, connecting its project if
@@ -485,6 +525,8 @@ impl App {
             .task(&session.task_id),
         )
         .await?;
+        // Temporary build caches are removed with the session (v0.3 §17).
+        self.ports.sandbox.discard(session.id.as_str()).await?;
         // The final ADI is set only for a completed Issue (v0.3 §10.2).
         if outcome == SessionOutcome::Completed {
             self.assess_adi(&session).await?;

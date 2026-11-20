@@ -67,3 +67,33 @@ pub async fn open_workspace(
     let command = rt.app.open_workspace(&SessionId::from(id)).await?;
     Ok(Json(json!({ "command": command })))
 }
+
+pub async fn sandbox_info(State(rt): State<Runtime>) -> Json<est_application::ports::SandboxInfo> {
+    Json(rt.app.sandbox_info())
+}
+
+/// Starts a sandbox run; returns at once with status `running`.
+pub async fn start_run(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+    Json(req): Json<est_application::RunRequest>,
+) -> ApiResult<(axum::http::StatusCode, Json<est_domain::SandboxRun>)> {
+    Ok((
+        axum::http::StatusCode::ACCEPTED,
+        Json(rt.app.start_run(&SessionId::from(id), req).await?),
+    ))
+}
+
+pub async fn runs(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<est_domain::SandboxRun>>> {
+    Ok(Json(rt.app.runs(&SessionId::from(id)).await?))
+}
+
+pub async fn run(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<est_domain::SandboxRun>> {
+    Ok(Json(rt.app.get_run(&id).await?))
+}

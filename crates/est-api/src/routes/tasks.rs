@@ -62,6 +62,23 @@ pub async fn import_exercise(
     ))
 }
 
+#[derive(Deserialize)]
+pub struct CriteriaBody {
+    pub criteria: Vec<est_domain::AcceptanceCriterion>,
+}
+
+pub async fn set_criteria(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+    Json(body): Json<CriteriaBody>,
+) -> ApiResult<Json<Task>> {
+    Ok(Json(
+        rt.app
+            .set_acceptance_criteria(&TaskId::from(id), body.criteria)
+            .await?,
+    ))
+}
+
 /// Completes the Issue: finishes its session and sets the final ADI.
 pub async fn complete(
     State(rt): State<Runtime>,
