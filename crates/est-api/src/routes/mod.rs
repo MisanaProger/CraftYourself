@@ -10,6 +10,7 @@ use crate::runtime::Runtime;
 mod analytics;
 mod conversations;
 mod isolated;
+mod knowledge;
 mod learning;
 mod llm;
 mod problems;
@@ -42,6 +43,8 @@ pub fn api() -> Router<Runtime> {
         .route("/sessions/{id}/finish", post(sessions::finish))
         .route("/sessions/{id}/diff", get(sessions::diff))
         .route("/sessions/{id}/events", get(sessions::events))
+        .route("/sessions/{id}/summary", get(knowledge::session_summary))
+        .route("/knowledge/profile", get(knowledge::profile))
         .route(
             "/sessions/{id}/workspace/open",
             post(sessions::open_workspace),

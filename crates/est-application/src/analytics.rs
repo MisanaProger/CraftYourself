@@ -48,7 +48,12 @@ pub struct PrivacySettings {
 
 impl App {
     /// Observed features of a completed Issue (v0.3 §10.3–10.4).
-    async fn observed_features(&self, session: &LearningSession) -> AppResult<ObservedFeatures> {
+    /// `until`: ignore events after this moment (a past session's summary).
+    pub(crate) async fn observed_features(
+        &self,
+        session: &LearningSession,
+        until: Option<est_core::Timestamp>,
+    ) -> AppResult<ObservedFeatures> {
         let mut f = ObservedFeatures {
             own_commits: self.commits_since_base(session).await?,
             ..Default::default()
@@ -61,6 +66,8 @@ impl App {
             .events
             .for_conversation(conversation, None)
             .await?
+            .into_iter()
+            .filter(|e| until.is_none_or(|u| e.event.at <= u))
         {
             let p = &e.event.payload;
             match e.event.kind.as_str() {
@@ -93,7 +100,7 @@ impl App {
 
     /// Final ADI of a completed Issue, stored with its scoring version.
     pub(crate) async fn assess_adi(&self, session: &LearningSession) -> AppResult<AdiAssessment> {
-        let features = self.observed_features(session).await?;
+        let features = self.observed_features(session, None).await?;
         let s = est_dependency::score_issue(&features);
         let saved = self
             .ports

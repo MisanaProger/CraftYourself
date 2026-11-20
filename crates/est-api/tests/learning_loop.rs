@@ -1496,3 +1496,182 @@ async fn recommendations_from_activity() {
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["recommendations"][0]["id"], set["id"]);
 }
+
+#[tokio::test]
+async fn session_summaries_and_knowledge_profile() {
+    let h = harness().await;
+    let (_, empty) = h.get("/api/v1/knowledge/profile?lang=en").await;
+    assert_eq!(
+        (
+            empty["sessions"].as_u64(),
+            empty["topics"].as_array().map(Vec::len)
+        ),
+        (Some(0), Some(0))
+    );
+
+    let pid = h.new_project().await["id"].as_str().unwrap().to_owned();
+    let tid = h.task(&pid, "Include the upper bound").await;
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    let (s, _) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(
+        s,
+        StatusCode::CONFLICT,
+        "no summary while the session is active"
+    );
+
+    h.say(
+        &conv,
+        "My private hunch: the upper bound is excluded. What next?",
+    )
+    .await;
+    let (s, _) = h
+        .call(
+            "PUT",
+            &format!("/api/v1/tasks/{tid}/acceptance-criteria"),
+            Some(json!({ "criteria": [{ "text": "Upper bound included", "done": true }] })),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    // Tests fail first, then pass.
+    for command in ["cargo test fail_case", "cargo test"] {
+        let (_, run) = h
+            .post(
+                &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+                json!({ "kind": "test", "command": command }),
+            )
+            .await;
+        h.wait_run(run["id"].as_str().unwrap()).await;
+    }
+    let repo = Repo::open(&ws);
+    let src = std::fs::read_to_string(ws.join("src/lib.rs")).unwrap();
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        src.replace("..b.parse", "..=b.parse"),
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit("Include upper bound", &learner()).unwrap();
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Written in code from observed data: counts and signals, no messages.
+    let (s, summary) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(s, StatusCode::OK, "{summary}");
+    assert!(!summary.to_string().contains("private hunch"));
+    assert_eq!(summary["outcome"], "completed");
+    assert_eq!(summary["task_title"], "Include the upper bound");
+    assert_eq!(summary["commits"], 1);
+    assert_eq!(summary["help"]["user_messages"], 1);
+    assert_eq!(
+        (
+            summary["criteria_total"].as_u64(),
+            summary["criteria_done"].as_u64()
+        ),
+        (Some(1), Some(1))
+    );
+    assert_eq!(
+        (
+            summary["runs"]["test_runs"].as_u64(),
+            summary["runs"]["recovered"].as_bool(),
+            summary["runs"]["last"].as_str()
+        ),
+        (Some(2), Some(true), Some("passed"))
+    );
+    assert!(summary["adi"].is_u64());
+    assert_eq!(
+        summary["signals"],
+        json!([
+            "worked_independently",
+            "tests_green",
+            "tests_recovered",
+            "criteria_met",
+            "own_commits"
+        ])
+    );
+
+    // An abandoned Issue.
+    let t2 = h.task(&pid, "Rewrite the parser").await;
+    let (_, s2) = h
+        .post(&format!("/api/v1/tasks/{t2}/start"), json!({}))
+        .await;
+    let sid2 = s2["id"].as_str().unwrap().to_owned();
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/sessions/{sid2}/finish"),
+            json!({ "outcome": "abandoned" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, abandoned) = h.get(&format!("/api/v1/sessions/{sid2}/summary")).await;
+    assert_eq!(abandoned["adi"], Value::Null);
+    assert_eq!(abandoned["signals"], json!(["no_test_runs", "abandoned"]));
+
+    // The profile aggregates per topic, with names in the asked language.
+    let (_, profile) = h.get("/api/v1/knowledge/profile?lang=en").await;
+    assert_eq!(
+        (
+            profile["sessions"].as_u64(),
+            profile["completed"].as_u64(),
+            profile["abandoned"].as_u64()
+        ),
+        (Some(2), Some(1), Some(1))
+    );
+    let topic = |kind: &str, id: &str| {
+        profile["topics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["kind"] == kind && t["id"] == id)
+            .cloned()
+            .unwrap()
+    };
+    let dt = topic("discipline", "debugging-testing");
+    assert_eq!(dt["label"], "Debugging and testing");
+    assert_eq!(
+        (dt["completed"].as_u64(), dt["abandoned"].as_u64()),
+        (Some(1), Some(1))
+    );
+    assert_eq!(
+        (dt["standing"].as_str(), dt["confidence"].as_str()),
+        (Some("independent"), Some("low"))
+    );
+    assert_eq!(topic("task_type", "bug-fix")["sessions"], 2);
+    assert_eq!(profile["recent"][0]["session_id"], sid2.as_str());
+
+    // It feeds the recommendations' snapshot and the export.
+    let (_, activity) = h.get("/api/v1/recommendations/activity?lang=en").await;
+    let k = &activity["knowledge_profile"];
+    assert!(
+        k["topics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "debugging-testing" && t["standing"] == "independent")
+    );
+    assert_eq!(
+        k["recent_sessions"][0]["signals"],
+        json!(["no_test_runs", "abandoned"])
+    );
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["session_summaries"].as_array().unwrap().len(), 2);
+
+    // Deleting the conversation drops what was counted from it; the rest is
+    // rebuilt from what is still stored.
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/conversations/{conv}"), None)
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, rebuilt) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert_eq!(rebuilt["conversation_id"], Value::Null);
+    assert_eq!(rebuilt["help"]["user_messages"], 0);
+    assert_eq!(rebuilt["adi"], Value::Null);
+    assert_eq!(rebuilt["runs"]["test_runs"], 2);
+    assert_eq!(rebuilt["commits"], 1);
+}

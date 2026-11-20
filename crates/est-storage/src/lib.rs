@@ -11,7 +11,8 @@ use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
     EventLog, GeneratedProgramRecord, GeneratedProgramRepository, LearningProgressRepository,
     LessonProgress, ProjectRepository, RecommendationRepository, RecommendationSet,
-    SandboxRunRepository, SessionRepository, StoredEvent, TaskRepository, User, UserRepository,
+    SandboxRunRepository, SessionRepository, SessionSummaryRepository, StoredEvent, TaskRepository,
+    User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -753,6 +754,10 @@ impl ConversationRepository for SqliteStore {
         }
         for sql in [
             "DELETE FROM session_events WHERE conversation_id = ?",
+            // Summaries count the conversation's help; they are rebuilt
+            // without it on the next request.
+            "DELETE FROM session_summaries WHERE session_id IN \
+             (SELECT id FROM learning_sessions WHERE conversation_id = ?)",
             "UPDATE learning_sessions SET conversation_id = NULL WHERE conversation_id = ?",
             "DELETE FROM conversations WHERE id = ?",
         ] {
@@ -1254,6 +1259,55 @@ impl RecommendationRepository for SqliteStore {
     }
 }
 
+// ---- session summaries ------------------------------------------------------
+
+#[async_trait]
+impl SessionSummaryRepository for SqliteStore {
+    async fn save_summary(&self, user: &UserId, s: &est_domain::SessionSummary) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO session_summaries (session_id, user_id, task_id, finished_at, summary) \
+             VALUES (?, ?, ?, ?, ?) \
+             ON CONFLICT(session_id) DO UPDATE SET finished_at = excluded.finished_at, \
+             summary = excluded.summary",
+        )
+        .bind(s.session_id.as_str())
+        .bind(user.as_str())
+        .bind(s.task_id.as_str())
+        .bind(s.finished_at)
+        .bind(to_json(s))
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn summary(&self, session: &SessionId) -> AppResult<Option<est_domain::SessionSummary>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT summary FROM session_summaries WHERE session_id = ?",
+        )
+        .bind(session.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db)?
+        .map(|s| from_json("session summary", &s))
+        .transpose()
+    }
+
+    async fn summaries(&self, user: &UserId) -> AppResult<Vec<est_domain::SessionSummary>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT summary FROM session_summaries WHERE user_id = ? \
+             ORDER BY finished_at DESC, rowid DESC",
+        )
+        .bind(user.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(|s| from_json("session summary", s))
+        .collect()
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -1284,6 +1338,7 @@ impl DataExporter for SqliteStore {
             "conversations": conversations,
             "events": events,
             "adi_assessments": AdiRepository::list(self).await?,
+            "session_summaries": self.summaries(&user.id).await?,
             "learning_progress": self.progress(&user.id, None).await?,
             // What was asked for and what came out; generated quiz keys stay
             // on the server like bundled ones.

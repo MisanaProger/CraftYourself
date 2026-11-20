@@ -464,3 +464,17 @@ pub trait RecommendationRepository: Send + Sync {
         limit: usize,
     ) -> AppResult<Vec<RecommendationSet>>;
 }
+
+/// Session Summaries, written in code when a session ends.
+#[async_trait]
+pub trait SessionSummaryRepository: Send + Sync {
+    /// Inserts or replaces the summary of its session.
+    async fn save_summary(
+        &self,
+        user: &UserId,
+        summary: &est_domain::SessionSummary,
+    ) -> AppResult<()>;
+    async fn summary(&self, session: &SessionId) -> AppResult<Option<est_domain::SessionSummary>>;
+    /// Newest first.
+    async fn summaries(&self, user: &UserId) -> AppResult<Vec<est_domain::SessionSummary>>;
+}
