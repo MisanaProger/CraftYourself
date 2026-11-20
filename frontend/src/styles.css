@@ -514,3 +514,8 @@ a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
 .discipline .evidence summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
 .discipline .evidence li { padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
 .discipline .evidence p { margin: 0.15rem 0 0; }
+
+/* A mentor answer while it is being written */
+.msg.draft .msg-meta span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; animation: writing 1.2s ease-in-out infinite; }
+@keyframes writing { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .msg.draft .msg-meta span::before { animation: none; } }

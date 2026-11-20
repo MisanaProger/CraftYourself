@@ -483,4 +483,7 @@ export const ru: Record<Key, string> = {
   "source.artifact": "тренажёр",
   "source.practice": "практика",
   "source.issue": "Issue",
+  "chat.writing": "пишет…",
+  "chat.checking": "проверка политикой…",
+  "chat.withheld": "Блоков кода: {n} — покажутся после проверки всего ответа политикой.",
 };

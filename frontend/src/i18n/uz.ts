@@ -484,4 +484,7 @@ export const uz: Record<Key, string> = {
   "source.artifact": "trenajyor",
   "source.practice": "amaliyot",
   "source.issue": "Issue",
+  "chat.writing": "yozmoqda…",
+  "chat.checking": "siyosat bo‘yicha tekshirilmoqda…",
+  "chat.withheld": "Kod bloklari: {n} — butun javob siyosat bo‘yicha tekshirilgach ko‘rsatiladi.",
 };

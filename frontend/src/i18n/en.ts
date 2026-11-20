@@ -483,6 +483,9 @@ export const en = {
   "source.artifact": "trainer",
   "source.practice": "practice",
   "source.issue": "Issue",
+  "chat.writing": "writing…",
+  "chat.checking": "checking against the policy…",
+  "chat.withheld": "Code blocks: {n} — shown after the policy check of the whole answer.",
 };
 
 export type Key = keyof typeof en;

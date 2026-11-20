@@ -5,11 +5,14 @@ import { useT, type Key } from "../i18n";
 import { pages } from "../services/api";
 import type { Card, Message } from "../types/api";
 import { levelName, tv, useFormat } from "../ui";
+import type { AnswerDraft } from "./answerDrafts";
 import { Markdown } from "./Markdown";
 
 interface Props {
   messages: Message[];
   pending: string | null;
+  /** The mentor's answer while it is being written. */
+  draft?: AnswerDraft | null;
   busy: boolean;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -74,7 +77,7 @@ function allowedPages(m: Message): number {
   return m.role === "assistant" && typeof n === "number" ? n : 0;
 }
 
-export function MessageList({ messages, pending, busy, onAccept, onReject, onSaveCriteria }: Props) {
+export function MessageList({ messages, pending, draft, busy, onAccept, onReject, onSaveCriteria }: Props) {
   const { t } = useT();
   const { theme } = useTheme();
   const fmt = useFormat();
@@ -132,7 +135,33 @@ export function MessageList({ messages, pending, busy, onAccept, onReject, onSav
           </li>
         );
       })}
-      {pending && (
+      {pending && <PendingMessage text={pending} />}
+      {draft && (draft.text || draft.withheld > 0) && (
+        <li className="msg msg-assistant draft" aria-busy>
+          <div className="avatar" aria-hidden>
+            <LogoMark size={30} />
+          </div>
+          <div className="msg-body">
+            <div className="msg-meta">
+              <strong>Craft Yourself</strong>
+              <span>{draft.done ? t("chat.checking") : t("chat.writing")}</span>
+            </div>
+            <div className="bubble">
+              {draft.text && <Markdown text={draft.text} />}
+              {draft.withheld > 0 && <p className="notice muted small">{t("chat.withheld", { n: draft.withheld })}</p>}
+            </div>
+          </div>
+        </li>
+      )}
+    </ol>
+  );
+}
+
+function PendingMessage({ text }: { text: string }) {
+  const { t } = useT();
+  return (
+    <>
+      {text && (
         <li className="msg msg-user pending">
           <div className="avatar" aria-hidden>
             {t("chat.you")}
@@ -143,11 +172,11 @@ export function MessageList({ messages, pending, busy, onAccept, onReject, onSav
               <span>{t("chat.sending")}</span>
             </div>
             <div className="bubble">
-              <p className="pre">{pending}</p>
+              <p className="pre">{text}</p>
             </div>
           </div>
         </li>
       )}
-    </ol>
+    </>
   );
 }
