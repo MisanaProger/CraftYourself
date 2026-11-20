@@ -41,6 +41,17 @@ Interface concepts: [`docs/design/`](docs/design)
   interactive boundary-values trainer in a sandboxed iframe and a practice
   project (a regression test, red → green) run in the sandbox. Six more
   programs are listed as *coming soon*.
+- **Problem analysis (LeetCode, Codeforces).** Paste a problem's link,
+  statement and samples and pick Python, C++ or Rust: you get a workspace
+  with a solution template, the samples run in the sandbox, and the mentor
+  guides you through the statement, examples, idea, complexity and edge
+  cases — starting at L0, with questions instead of the answer. Nothing is
+  downloaded from the judge.
+- **Recommendations.** The connected model suggests next steps from your
+  activity: programs to finish, Issues to continue, problems on Codeforces
+  or LeetCode by topic and rating, programs to generate. It sees only
+  aggregates and titles — never your messages or code — and you can see
+  exactly what is sent.
 - **Programs generated on request.** Name a topic, level and number of
   lessons; the connected model plans the program and writes reading lessons,
   interactive HTML5 pages and quizzes. Answers are validated in code before
@@ -81,7 +92,7 @@ Interface concepts: [`docs/design/`](docs/design)
 - **Privacy.** Data stays local; export your whole history as JSON; delete a
   conversation together with its events and the Issue's ADI.
 
-Not yet: Session Summary and Knowledge Profile, evidence-based skill
+Not yet: Session Summary and Knowledge Profile, loading problem statements from the judge, evidence-based skill
 assessment, commit and PR review, the other learning programs. See the
 [roadmap](ROADMAP.md).
 

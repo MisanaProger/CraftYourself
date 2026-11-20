@@ -11,6 +11,8 @@ mod error;
 pub mod generation;
 pub mod learning;
 pub mod ports;
+pub mod problems;
+pub mod recommendations;
 pub mod sandbox;
 mod service;
 
@@ -18,6 +20,8 @@ pub use analytics::{AdiHistoryItem, AdiOverview, PrivacySettings, SkillMatrix};
 pub use conversation::{ConversationView, NewConversation, PostMessage};
 pub use error::{AppError, AppResult};
 pub use generation::{GenerateProgram, GeneratedProgramSummary};
+pub use problems::{ImportProblem, ProblemSummary};
+pub use recommendations::RecommendRequest;
 pub use sandbox::RunRequest;
 pub use service::{
     AddProject, App, AppSettings, Ports, SessionOverview, StartedSession, name_from_source,

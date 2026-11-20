@@ -13,6 +13,8 @@ pub enum TaskType {
     Performance,
     Testing,
     Regression,
+    /// A competitive-programming problem (LeetCode, Codeforces, …).
+    Algorithm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -37,8 +39,20 @@ pub enum TaskStatus {
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum TaskSource {
     Manual,
-    Exercise { id: String, version: String },
-    Issue { url: String },
+    Exercise {
+        id: String,
+        version: String,
+    },
+    Issue {
+        url: String,
+    },
+    /// A problem from an online judge, imported for a guided analysis.
+    Problem {
+        platform: String,
+        id: String,
+        #[serde(default)]
+        url: Option<String>,
+    },
 }
 
 /// Mentor limits for one task.

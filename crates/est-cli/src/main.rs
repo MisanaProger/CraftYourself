@@ -488,6 +488,7 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
                     TaskSource::Exercise { id, .. } => format!("exercise:{id}"),
                     TaskSource::Issue { url } => url.clone(),
                     TaskSource::Manual => "manual".into(),
+                    TaskSource::Problem { platform, id, .. } => format!("{platform}:{id}"),
                 };
                 println!(
                     "{}  {:<12} {:<12} {:<12} {}  [{src}]",

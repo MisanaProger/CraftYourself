@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use est_application::ports::{
     AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
     EventLog, GeneratedProgramRecord, GeneratedProgramRepository, LearningProgressRepository,
-    LessonProgress, ProjectRepository, SandboxRunRepository, SessionRepository, StoredEvent,
-    TaskRepository, User, UserRepository,
+    LessonProgress, ProjectRepository, RecommendationRepository, RecommendationSet,
+    SandboxRunRepository, SessionRepository, StoredEvent, TaskRepository, User, UserRepository,
 };
 use est_application::{AppError, AppResult};
 use est_core::{
@@ -1202,6 +1202,58 @@ impl GeneratedProgramRepository for SqliteStore {
     }
 }
 
+// ---- recommendations -----------------------------------------------------------
+
+#[async_trait]
+impl RecommendationRepository for SqliteStore {
+    async fn save_recommendations(&self, user: &UserId, r: &RecommendationSet) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO recommendations (id, user_id, created_at, model, lang, summary, items, activity) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(user.as_str())
+        .bind(r.created_at)
+        .bind(&r.model)
+        .bind(&r.lang)
+        .bind(&r.summary)
+        .bind(to_json(&r.items))
+        .bind(r.activity.to_string())
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn recommendations(
+        &self,
+        user: &UserId,
+        limit: usize,
+    ) -> AppResult<Vec<RecommendationSet>> {
+        sqlx::query(
+            "SELECT * FROM recommendations WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+        )
+        .bind(user.as_str())
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(|r| {
+            Ok(RecommendationSet {
+                id: r.get("id"),
+                created_at: r.get("created_at"),
+                model: r.get("model"),
+                lang: r.get("lang"),
+                summary: r.get("summary"),
+                items: from_json("recommendations", r.get("items"))?,
+                activity: from_json("recommendation activity", r.get("activity"))?,
+            })
+        })
+        .collect()
+    }
+}
+
 // ---- export ----------------------------------------------------------------
 
 #[async_trait]
@@ -1235,6 +1287,7 @@ impl DataExporter for SqliteStore {
             "learning_progress": self.progress(&user.id, None).await?,
             // What was asked for and what came out; generated quiz keys stay
             // on the server like bundled ones.
+            "recommendations": self.recommendations(&user.id, 1000).await?,
             "generated_programs": self.list_generated(&user.id).await?.iter().map(|g| serde_json::json!({
                 "id": g.id, "topic": g.topic, "lang": g.lang, "level": g.level,
                 "status": g.status, "model": g.model, "created_at": g.created_at,

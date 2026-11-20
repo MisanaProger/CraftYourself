@@ -18,6 +18,7 @@ crates/
   est-discipline     Skill Matrix catalog (pure, localized)
   est-exercises      Exercise Manifest (TOML)
   est-learning       learning content loader (embeds learning-artifacts/)
+  est-problems       online-judge problems: links, statements, samples, workspace (pure)
   est-storage        SQLite repositories; migrations live in /migrations
   est-git            git CLI wrapper + GitPort
   est-sandbox        Docker/Podman runner + Sandbox port

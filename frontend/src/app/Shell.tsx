@@ -46,6 +46,7 @@ const NAV: { to: string; key: Key; icon: () => JSX.Element; end?: boolean }[] = 
   { to: "/", key: "nav.home", icon: Icon.home, end: true },
   { to: "/workspace", key: "nav.workspace", icon: Icon.chat },
   { to: "/tasks", key: "nav.tasks", icon: Icon.tasks },
+  { to: "/problems", key: "nav.problems", icon: Icon.problem },
   { to: "/projects", key: "nav.projects", icon: Icon.projects },
   { to: "/skills", key: "nav.skills", icon: Icon.skills },
   { to: "/adi", key: "nav.adi", icon: Icon.adi },

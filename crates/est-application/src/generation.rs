@@ -412,7 +412,7 @@ fn lesson_context(p: &GeneratedProgram, lesson: &GeneratedLesson, lang: &str) ->
 
 /// Asks the model and parses the answer; a rejected answer is retried once
 /// with the reason, then the error is returned.
-async fn ask<T>(
+pub(crate) async fn ask<T>(
     llm: &dyn LlmProvider,
     system: &str,
     request: &str,

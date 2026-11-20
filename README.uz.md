@@ -41,6 +41,18 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   tekshiriladigan savollar, izolyatsiyalangan iframe’dagi chegaraviy
   qiymatlar trenajyori va sandboxda ishga tushiriladigan amaliy loyiha
   (regressiya testi, qizil → yashil). Yana oltita dastur «tez orada» deb belgilangan.
+- **Masalalar tahlili (LeetCode, Codeforces).** Havola, shart va misollarni
+  joylashtiring va Python, C++ yoki Rust’ni tanlang: yechim shabloni bilan ish
+  katalogi yaratiladi, misollar sandboxda ishga tushiriladi, mentor esa
+  bosqichma-bosqich olib boradi — shart, misollar, g‘oya, murakkablik,
+  chegaraviy holatlar — L0 dan boshlab, javob o‘rniga savollar bilan. Saytdan
+  hech narsa yuklab olinmaydi.
+- **Tavsiyalar.** Ulangan sun’iy intellekt faolligingiz asosida keyingi
+  qadamlarni taklif qiladi: qaysi dasturlarni tugatish, qaysi Issue’larga
+  qaytish, Codeforces yoki LeetCode’da mavzu va reyting bo‘yicha qaysi
+  masalalarni yechish, qaysi dasturni yaratish. Model faqat umumlashgan
+  ma’lumotlar va nomlarni ko‘radi — xabarlar va kodni hech qachon — va nima
+  yuborilishini ko‘rishingiz mumkin.
 - **So‘rov bo‘yicha dasturlar.** Mavzu, daraja va darslar sonini kiriting —
   ulangan sun’iy intellekt reja tuzadi va darslar, interaktiv HTML5 sahifalar
   hamda testlar yozadi. Model javoblari saqlashdan oldin kodda tekshiriladi,
@@ -81,7 +93,7 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
   suhbatni hodisalari va vazifa ADI’si bilan birga o‘chirish.
 
-Hozircha yo‘q: Session Summary va Knowledge Profile, dalillar asosida
+Hozircha yo‘q: Session Summary va Knowledge Profile, masala shartlarini saytdan yuklash, dalillar asosida
 ko‘nikmalarni baholash, kommit va PR tekshiruvi, qolgan o‘quv dasturlari.
 [ROADMAP.md](ROADMAP.md) ga qarang.
 

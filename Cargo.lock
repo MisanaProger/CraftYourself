@@ -535,11 +535,13 @@ dependencies = [
  "est-domain",
  "est-exercises",
  "est-learning",
+ "est-problems",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -648,6 +650,15 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "est-problems"
+version = "0.1.0"
+dependencies = [
+ "est-domain",
+ "serde",
+ "url",
 ]
 
 [[package]]

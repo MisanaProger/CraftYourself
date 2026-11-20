@@ -1,6 +1,6 @@
 // Types mirror the JSON produced by the Rust API (`/api/v1`).
 
-export type TaskType = "bug-fix" | "feature" | "refactoring" | "documentation" | "performance" | "testing" | "regression";
+export type TaskType = "bug-fix" | "feature" | "refactoring" | "documentation" | "performance" | "testing" | "regression" | "algorithm";
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 export type TaskStatus = "open" | "in-progress" | "done" | "archived";
 export type SessionStatus = "active" | "completed" | "abandoned";
@@ -442,4 +442,58 @@ export interface QuizResult {
   score: number;
   passed: boolean;
   results: { id: string; chosen: number | null; correct: boolean; answer: number; explanation: string }[];
+}
+
+export type ProblemLanguage = "python" | "cpp" | "rust";
+
+export interface Sample {
+  input: string;
+  output: string;
+}
+
+export interface ImportProblem {
+  url?: string;
+  title?: string;
+  statement: string;
+  samples: Sample[];
+  tags: string[];
+  rating?: number;
+  difficulty?: "easy" | "medium" | "hard";
+  language: ProblemLanguage;
+  lang: string;
+}
+
+export interface ProblemSummary {
+  task_id: string;
+  title: string;
+  platform: "codeforces" | "leetcode" | "other";
+  problem_id: string;
+  url: string | null;
+  difficulty: Difficulty;
+  status: TaskStatus;
+  session_id: string | null;
+  conversation_id: string | null;
+  created_at: string;
+}
+
+export type RecommendationAction =
+  | { kind: "open_program"; program_id: string; title: string }
+  | { kind: "generate_program"; topic: string; level: GenerationLevel }
+  | { kind: "solve_problems"; platform: "codeforces" | "leetcode"; tags: string[]; rating: number | null; difficulty: string | null; url: string }
+  | { kind: "continue_task"; task_id: string; title: string; conversation_id: string | null };
+
+export interface Recommendation {
+  title: string;
+  reason: string;
+  action: RecommendationAction | null;
+}
+
+export interface RecommendationSet {
+  id: string;
+  created_at: string;
+  model: string;
+  lang: string;
+  summary: string;
+  items: Recommendation[];
+  activity: unknown;
 }
