@@ -301,4 +301,7 @@ export const uz: Record<Key, string> = {
   "settings.deleteHint": "O‘chirish xabarlarni, eskalatsiya tarixini, suhbat hodisalarini va bog‘liq Issue ADI’sini o‘chiradi.",
   "settings.noConversations": "Suhbatlar yo‘q.",
   "settings.deleteConfirm": "«{title}» suhbati va unga bog‘liq ma’lumotlar o‘chirilsinmi? Buni qaytarib bo‘lmaydi.",
+
+  "nav.collapse": "Yon panelni yashirish",
+  "nav.expand": "Yon panelni ko‘rsatish",
 };

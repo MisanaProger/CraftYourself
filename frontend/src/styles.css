@@ -83,7 +83,8 @@ code.block { display: block; padding: 0.5rem 0.7rem; }
 .push { margin-left: auto; }
 
 /* ---- shell -------------------------------------------------------------- */
-.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.18s ease; }
+.shell.collapsed { grid-template-columns: 72px minmax(0, 1fr); }
 .sidebar {
   position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 0.25rem;
   padding: 1.4rem 1rem 1rem; background: var(--bg-2); border-right: 1px solid var(--border);
@@ -108,6 +109,20 @@ code.block { display: block; padding: 0.5rem 0.7rem; }
 .locality strong { display: block; letter-spacing: 0.05em; }
 .locality span { color: var(--muted); }
 .main { min-width: 0; }
+.sidebar-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.sidebar-toggle { flex: none; }
+
+/* collapsed: icons only */
+.shell.collapsed .sidebar { padding: 1.1rem 0.6rem 1rem; overflow: hidden; }
+.shell.collapsed .sidebar-head { flex-direction: column; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+.shell.collapsed .brand { padding: 0; }
+.shell.collapsed .tagline,
+.shell.collapsed .nav a span,
+.shell.collapsed .lang-switch,
+.shell.collapsed .locality div { display: none; }
+.shell.collapsed .nav a { justify-content: center; padding: 0.6rem 0; border-left-width: 0; }
+.shell.collapsed .locality { justify-content: center; padding: 0.5rem 0 0; }
+@media (prefers-reduced-motion: reduce) { .shell { transition: none; } }
 
 /* ---- generic ---------------------------------------------------------- */
 .page { max-width: 1120px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
@@ -296,7 +311,11 @@ code.status { white-space: pre; }
   .context { border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell, .shell.collapsed { grid-template-columns: 1fr; }
+  .shell.collapsed .sidebar { padding: 0.75rem 16px; }
+  .shell.collapsed .sidebar-head { flex-direction: row; margin-bottom: 0; }
+  .shell.collapsed .nav, .shell.collapsed .sidebar-foot { display: none; }
+  .sidebar-head { width: 100%; align-items: center; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 0.75rem 16px; gap: 0.5rem; }
   .tagline, .locality { display: none; }
   .logo-name { font-size: 1.05rem; }

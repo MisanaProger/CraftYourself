@@ -300,4 +300,7 @@ export const ru: Record<Key, string> = {
   "settings.deleteHint": "Удаление стирает сообщения, историю эскалаций, события диалога и ADI связанной Issue.",
   "settings.noConversations": "Диалогов нет.",
   "settings.deleteConfirm": "Удалить диалог «{title}» и связанные данные? Это необратимо.",
+
+  "nav.collapse": "Скрыть боковую панель",
+  "nav.expand": "Показать боковую панель",
 };

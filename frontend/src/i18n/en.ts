@@ -300,6 +300,9 @@ export const en = {
   "settings.deleteHint": "Deleting removes the messages, escalation history, the conversation's events and the ADI of its Issue.",
   "settings.noConversations": "No conversations.",
   "settings.deleteConfirm": "Delete the conversation “{title}” and its data? This cannot be undone.",
+
+  "nav.collapse": "Collapse sidebar",
+  "nav.expand": "Expand sidebar",
 };
 
 export type Key = keyof typeof en;

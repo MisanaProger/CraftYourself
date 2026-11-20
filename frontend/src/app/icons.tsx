@@ -2,6 +2,13 @@
 const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
 export const Icon = {
+  panel: ({ open }: { open: boolean }) => (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+      <rect {...P} x="3" y="4" width="18" height="16" rx="2" />
+      <path {...P} d="M9 4v16" />
+      <path {...P} d={open ? "M15.5 10l-2 2 2 2" : "M13.5 10l2 2-2 2"} />
+    </svg>
+  ),
   home: () => (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
       <path {...P} d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" />
