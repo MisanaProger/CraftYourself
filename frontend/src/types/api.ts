@@ -35,7 +35,8 @@ export interface CommandSpec {
 export type TaskSource =
   | { type: "manual" }
   | { type: "exercise"; id: string; version: string }
-  | { type: "issue"; url: string };
+  | { type: "issue"; url: string }
+  | { type: "problem"; platform: string; id: string; url: string | null };
 
 export interface Task {
   id: string;
@@ -608,4 +609,61 @@ export interface KnowledgeProfile {
   topics: TopicKnowledge[];
   recent: SessionSummary[];
   note: string;
+}
+
+// ---- forges and judges ----------------------------------------------------
+
+export interface IssueRef {
+  forge: "github" | "gitlab";
+  host: string;
+  project: string;
+  number: number;
+  url: string;
+}
+
+export type FindingSeverity = "good" | "caution" | "blocker";
+
+export interface IssueFinding {
+  code: string;
+  severity: FindingSeverity;
+  detail?: string;
+}
+
+export interface IssuePreview {
+  issue: IssueRef;
+  title: string;
+  labels: string[];
+  open: boolean;
+  comments: number;
+  repository: { clone_url: string; default_branch: string | null; archived: boolean; license: string | null; language: string | null };
+  suitability: { verdict: "suitable" | "caution" | "unsuitable"; findings: IssueFinding[] };
+  task: { title: string; description: string; task_type: TaskType; difficulty: Difficulty; acceptance_criteria: string[]; disciplines: string[] };
+  project_id: string | null;
+  task_id: string | null;
+}
+
+export interface ImportIssue {
+  url: string;
+  allow_network: boolean;
+  project_id?: string;
+  task_type?: TaskType;
+  difficulty?: Difficulty;
+}
+
+export interface FetchedProblem {
+  input: { url: string | null; title: string | null; statement: string; samples: Sample[]; tags: string[]; rating: number | null; difficulty: "easy" | "medium" | "hard" | null };
+  statement_found: boolean;
+}
+
+export type PublishWarning = "mentor_assisted";
+
+export interface PublishPreview {
+  id: string;
+  kind: "issue_comment" | "issue" | "pull_request";
+  host: string;
+  target: string;
+  body: string;
+  digest: string;
+  warnings: PublishWarning[];
+  expires_at: string;
 }

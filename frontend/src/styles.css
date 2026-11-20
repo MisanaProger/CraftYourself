@@ -519,3 +519,13 @@ a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
 .msg.draft .msg-meta span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; animation: writing 1.2s ease-in-out infinite; }
 @keyframes writing { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .msg.draft .msg-meta span::before { animation: none; } }
+
+/* Forges and judges: permission checkbox, Issue preview, publish drafts. */
+.check { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; font-size: 0.9rem; }
+.check input { width: 18px; height: 18px; margin-top: 0.1rem; flex: none; accent-color: var(--accent); }
+.issue-preview { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.finding.good > span:first-child { color: var(--ok); }
+.finding.blocker > span:first-child { color: var(--danger); }
+.publish-draft { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+.publish-draft pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: 0.85rem; }
+.issue-preview ul.goals { list-style: none; padding-left: 0; }
