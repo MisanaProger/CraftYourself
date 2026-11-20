@@ -9,13 +9,15 @@
 //!   the current level is blocked and a one-step escalation is proposed;
 //! * [`constraints`] — whether code may be generated and how much of the
 //!   solution may be revealed at the current level;
-//! * [`tools`] — explicit permissions for every mentor tool.
+//! * [`tools`] — explicit permissions for every mentor tool;
+//! * [`stream`] — what of an answer may be shown before it is checked.
 //!
 //! The model can neither raise its own level nor assume consent.
 
 pub mod boundary;
 pub mod constraints;
 pub mod engagement;
+pub mod stream;
 pub mod tools;
 
 pub use boundary::{BoundaryDecision, MentorRequest, QueryKind, classify};
