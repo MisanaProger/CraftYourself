@@ -587,6 +587,8 @@ dependencies = [
 name = "est-discipline"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "est-core",
  "serde",
 ]
 
@@ -646,6 +648,7 @@ dependencies = [
 name = "est-learning"
 version = "0.1.0"
 dependencies = [
+ "est-discipline",
  "include_dir",
  "serde",
  "serde_json",

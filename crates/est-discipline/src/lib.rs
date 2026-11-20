@@ -4,10 +4,13 @@
 //! The catalog is data: new disciplines are added here without touching the
 //! core. Absence of evidence is reported as `not_assessed`, never as zero.
 
-use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
+
+use est_core::Timestamp;
+use serde::{Deserialize, Serialize};
 
 /// Version of the catalog and its criteria; stored with every assessment.
-pub const CATALOG_VERSION: &str = "esm-catalog-0.1";
+pub const CATALOG_VERSION: &str = "esm-catalog-0.2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -19,7 +22,7 @@ pub enum DisciplineGroup {
 }
 
 /// Dimensions a skill can be assessed on (§11.3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Dimension {
     Theory,
@@ -27,6 +30,16 @@ pub enum Dimension {
     Diagnosis,
     Transfer,
     Independence,
+}
+
+impl Dimension {
+    pub const ALL: [Dimension; 5] = [
+        Dimension::Theory,
+        Dimension::Practice,
+        Dimension::Diagnosis,
+        Dimension::Transfer,
+        Dimension::Independence,
+    ];
 }
 
 /// Evidence status of a skill or discipline (§11.4).
@@ -267,15 +280,168 @@ pub fn is_known_discipline(id: &str) -> bool {
     catalog().iter().any(|d| d.id == id)
 }
 
+/// Whether `skill` belongs to `discipline` in the catalog.
+pub fn is_known_skill(discipline: &str, skill: &str) -> bool {
+    catalog()
+        .iter()
+        .any(|d| d.id == discipline && d.skills.iter().any(|s| s.id == skill))
+}
+
+// ---- assessment evidence (§11.4) -------------------------------------------
+
+/// Where a piece of evidence was observed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceSource {
+    /// One graded quiz attempt.
+    Quiz,
+    /// A result reported by an interactive artifact.
+    Artifact,
+    /// A practice project of a learning program, completed.
+    Practice,
+    /// A completed Issue.
+    Issue,
+}
+
+impl EvidenceSource {
+    /// Work on real code weighs more than a quiz or a trainer.
+    pub fn weight(self) -> u32 {
+        match self {
+            EvidenceSource::Quiz | EvidenceSource::Artifact => 1,
+            EvidenceSource::Practice | EvidenceSource::Issue => 2,
+        }
+    }
+}
+
+/// One observed result, 0–100, for a discipline or one of its skills.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Evidence {
+    pub discipline: String,
+    /// `None`: evidence for the discipline as a whole.
+    pub skill: Option<String>,
+    pub source: EvidenceSource,
+    pub dimension: Dimension,
+    pub score: u8,
+    /// What was observed: `program/lesson` or a session id. A newer result
+    /// for the same reference and dimension replaces the older one in the
+    /// score; both stay in the history.
+    pub reference: String,
+    pub title: String,
+    pub observed_at: Timestamp,
+}
+
+/// Evidence older than this needs reassessment.
+pub const STALE_AFTER_DAYS: i64 = 180;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Confidence {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DimensionScore {
+    pub dimension: Dimension,
+    pub score: u8,
+    pub evidence_count: u32,
+}
+
+/// The assessment of a skill or discipline from its evidence.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Assessment {
+    pub status: AssessmentStatus,
+    /// `None` without evidence: no data is not a zero.
+    pub score: Option<u8>,
+    pub confidence: Option<Confidence>,
+    /// Distinct things observed (references).
+    pub evidence_count: u32,
+    pub dimensions: Vec<DimensionScore>,
+    pub last_observed: Option<Timestamp>,
+}
+
+fn weighted(items: &[&Evidence]) -> Option<u8> {
+    let w: u32 = items.iter().map(|e| e.source.weight()).sum();
+    (w > 0).then(|| {
+        let sum: u32 = items
+            .iter()
+            .map(|e| u32::from(e.score.min(100)) * e.source.weight())
+            .sum();
+        ((sum + w / 2) / w) as u8
+    })
+}
+
+/// Rules (catalog `esm-catalog-0.2`):
+/// - the latest result per reference and dimension counts; the score is
+///   their mean weighted by source (practice and Issues ×2);
+/// - no evidence → `not_assessed`; one reference → `insufficient_evidence`;
+///   nothing newer than [`STALE_AFTER_DAYS`] → `needs_reassessment`;
+///   at least three references from at least two sources or dimensions →
+///   `established`; otherwise `provisional`;
+/// - confidence: 1–2 references low, 3–5 medium, 6+ high.
+pub fn assess(evidence: &[&Evidence], now: Timestamp) -> Assessment {
+    let mut latest: BTreeMap<(&str, Dimension), &Evidence> = BTreeMap::new();
+    for e in evidence {
+        let slot = latest
+            .entry((e.reference.as_str(), e.dimension))
+            .or_insert(e);
+        if e.observed_at >= slot.observed_at {
+            *slot = e;
+        }
+    }
+    let items: Vec<&Evidence> = latest.into_values().collect();
+    let references: BTreeSet<&str> = items.iter().map(|e| e.reference.as_str()).collect();
+    let n = references.len() as u32;
+    let last_observed = items.iter().map(|e| e.observed_at).max();
+    let kinds: BTreeSet<String> = items
+        .iter()
+        .flat_map(|e| [format!("s:{:?}", e.source), format!("d:{:?}", e.dimension)])
+        .collect();
+    let varied = kinds.iter().filter(|k| k.starts_with("s:")).count() > 1
+        || kinds.iter().filter(|k| k.starts_with("d:")).count() > 1;
+    let status = match (n, last_observed) {
+        (0, _) | (_, None) => AssessmentStatus::NotAssessed,
+        (_, Some(t)) if (now - t).num_days() > STALE_AFTER_DAYS => {
+            AssessmentStatus::NeedsReassessment
+        }
+        (1, _) => AssessmentStatus::InsufficientEvidence,
+        (n, _) if n >= 3 && varied => AssessmentStatus::Established,
+        _ => AssessmentStatus::Provisional,
+    };
+    let mut dimensions = Vec::new();
+    for d in Dimension::ALL {
+        let of: Vec<&Evidence> = items.iter().copied().filter(|e| e.dimension == d).collect();
+        if let Some(score) = weighted(&of) {
+            dimensions.push(DimensionScore {
+                dimension: d,
+                score,
+                evidence_count: of.len() as u32,
+            });
+        }
+    }
+    Assessment {
+        status,
+        score: weighted(&items),
+        confidence: match n {
+            0 => None,
+            1..=2 => Some(Confidence::Low),
+            3..=5 => Some(Confidence::Medium),
+            _ => Some(Confidence::High),
+        },
+        evidence_count: n,
+        dimensions,
+        last_observed,
+    }
+}
+
 /// One row of the matrix as shown to the learner.
 #[derive(Debug, Clone, Serialize)]
 pub struct MatrixSkill {
     pub id: &'static str,
     pub name: &'static str,
-    pub status: AssessmentStatus,
-    /// `None` unless there is evidence: no data is not a zero.
-    pub score: Option<u8>,
-    pub evidence_count: u32,
+    #[serde(flatten)]
+    pub assessment: Assessment,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -283,36 +449,57 @@ pub struct MatrixDiscipline {
     pub id: &'static str,
     pub name: &'static str,
     pub group: DisciplineGroup,
-    pub status: AssessmentStatus,
-    pub score: Option<u8>,
+    /// All evidence of the discipline: its skills' and its own.
+    #[serde(flatten)]
+    pub assessment: Assessment,
     pub skills: Vec<MatrixSkill>,
-    /// Completed tasks that exercised this discipline (not yet evidence).
+    /// Completed tasks that exercised this discipline.
     pub practice_tasks: u32,
+    /// Evidence history, newest first (at most [`HISTORY`] items).
+    pub history: Vec<Evidence>,
 }
 
-/// Builds the matrix. Skill assessment from evidence is not implemented yet,
-/// so every skill is `not_assessed`; practice is reported separately.
-pub fn matrix(lang: &str, practice: impl Fn(&str) -> u32) -> Vec<MatrixDiscipline> {
+pub const HISTORY: usize = 30;
+
+/// Builds the matrix from evidence. Evidence for an unknown discipline is
+/// ignored; evidence for an unknown skill counts for its discipline only.
+pub fn matrix(
+    lang: &str,
+    practice: impl Fn(&str) -> u32,
+    evidence: &[Evidence],
+    now: Timestamp,
+) -> Vec<MatrixDiscipline> {
     catalog()
         .into_iter()
-        .map(|d| MatrixDiscipline {
-            id: d.id,
-            name: name_in(&d.name, lang),
-            group: d.group,
-            status: AssessmentStatus::NotAssessed,
-            score: None,
-            practice_tasks: practice(d.id),
-            skills: d
-                .skills
-                .into_iter()
-                .map(|s| MatrixSkill {
-                    id: s.id,
-                    name: name_in(&s.name, lang),
-                    status: AssessmentStatus::NotAssessed,
-                    score: None,
-                    evidence_count: 0,
-                })
-                .collect(),
+        .map(|d| {
+            let own: Vec<&Evidence> = evidence.iter().filter(|e| e.discipline == d.id).collect();
+            let mut history: Vec<Evidence> = own.iter().map(|e| (*e).clone()).collect();
+            history.sort_by_key(|e| std::cmp::Reverse(e.observed_at));
+            history.truncate(HISTORY);
+            MatrixDiscipline {
+                id: d.id,
+                name: name_in(&d.name, lang),
+                group: d.group,
+                assessment: assess(&own, now),
+                practice_tasks: practice(d.id),
+                skills: d
+                    .skills
+                    .iter()
+                    .map(|s| {
+                        let of: Vec<&Evidence> = own
+                            .iter()
+                            .copied()
+                            .filter(|e| e.skill.as_deref() == Some(s.id))
+                            .collect();
+                        MatrixSkill {
+                            id: s.id,
+                            name: name_in(&s.name, lang),
+                            assessment: assess(&of, now),
+                        }
+                    })
+                    .collect(),
+                history,
+            }
         })
         .collect()
 }
@@ -339,14 +526,138 @@ mod tests {
 
     #[test]
     fn missing_data_is_not_zero() {
-        let m = matrix("en", |_| 0);
+        let m = matrix("en", |_| 0, &[], est_core::now());
         assert_eq!(m[0].name, "Algorithmic thinking");
-        assert_eq!(matrix("uz", |_| 0)[9].skills[0].name, "Kommitlar");
+        assert_eq!(
+            matrix("uz", |_| 0, &[], est_core::now())[9].skills[0].name,
+            "Kommitlar"
+        );
+        assert!(m.iter().all(|d| d.assessment.score.is_none()
+            && d.assessment.status == AssessmentStatus::NotAssessed));
         assert!(
             m.iter()
-                .all(|d| d.score.is_none() && d.status == AssessmentStatus::NotAssessed)
+                .flat_map(|d| &d.skills)
+                .all(|s| s.assessment.score.is_none())
         );
-        assert!(m.iter().flat_map(|d| &d.skills).all(|s| s.score.is_none()));
         assert!(is_known_discipline("debugging-testing") && !is_known_discipline("magic"));
+        assert!(is_known_skill("debugging-testing", "regression"));
+        assert!(!is_known_skill("git", "regression"));
+    }
+
+    fn ev(
+        skill: Option<&str>,
+        source: EvidenceSource,
+        dim: Dimension,
+        score: u8,
+        r: &str,
+        days_ago: i64,
+    ) -> Evidence {
+        Evidence {
+            discipline: "debugging-testing".into(),
+            skill: skill.map(str::to_owned),
+            source,
+            dimension: dim,
+            score,
+            reference: r.into(),
+            title: r.into(),
+            observed_at: est_core::now() - chrono::Duration::days(days_ago),
+        }
+    }
+
+    #[test]
+    fn assessment_from_evidence() {
+        use Dimension::{Independence, Theory};
+        use EvidenceSource::{Issue, Quiz};
+        let now = est_core::now();
+        assert_eq!(assess(&[], now).status, AssessmentStatus::NotAssessed);
+
+        // Retaking a quiz: only the latest attempt counts.
+        let a = ev(Some("unit-integration"), Quiz, Theory, 40, "testing/q1", 3);
+        let b = ev(Some("unit-integration"), Quiz, Theory, 90, "testing/q1", 1);
+        let one = assess(&[&a, &b], now);
+        assert_eq!(
+            (one.status, one.score, one.evidence_count, one.confidence),
+            (
+                AssessmentStatus::InsufficientEvidence,
+                Some(90),
+                1,
+                Some(Confidence::Low)
+            )
+        );
+
+        // Practice weighs twice as much; varied sources establish the skill.
+        let c = ev(
+            Some("unit-integration"),
+            EvidenceSource::Practice,
+            Dimension::Practice,
+            60,
+            "s1",
+            1,
+        );
+        let d = ev(None, Issue, Independence, 100, "s2", 0);
+        let all = assess(&[&a, &b, &c, &d], now);
+        assert_eq!(all.status, AssessmentStatus::Established);
+        assert_eq!(all.score, Some(82)); // (90 + 2*60 + 2*100) / 5
+        assert_eq!(all.confidence, Some(Confidence::Medium));
+        assert_eq!(
+            all.dimensions
+                .iter()
+                .map(|d| (d.dimension, d.score))
+                .collect::<Vec<_>>(),
+            [(Theory, 90), (Dimension::Practice, 60), (Independence, 100)]
+        );
+        let two = assess(&[&b, &c], now);
+        assert_eq!(two.status, AssessmentStatus::Provisional);
+
+        // Old evidence needs reassessment.
+        let old = ev(None, Quiz, Theory, 100, "testing/q2", STALE_AFTER_DAYS + 2);
+        assert_eq!(
+            assess(&[&old], now).status,
+            AssessmentStatus::NeedsReassessment
+        );
+    }
+
+    #[test]
+    fn matrix_places_evidence() {
+        let e = [
+            ev(
+                Some("regression"),
+                EvidenceSource::Practice,
+                Dimension::Practice,
+                100,
+                "s1",
+                2,
+            ),
+            ev(
+                Some("no-such-skill"),
+                EvidenceSource::Quiz,
+                Dimension::Theory,
+                50,
+                "q",
+                1,
+            ),
+            Evidence {
+                discipline: "magic".into(),
+                ..ev(None, EvidenceSource::Quiz, Dimension::Theory, 10, "m", 0)
+            },
+        ];
+        let m = matrix("en", |_| 0, &e, est_core::now());
+        let dt = m.iter().find(|d| d.id == "debugging-testing").unwrap();
+        assert_eq!(dt.assessment.evidence_count, 2);
+        assert_eq!(dt.history.len(), 2);
+        assert_eq!(dt.history[0].reference, "q", "newest first");
+        let regression = dt.skills.iter().find(|s| s.id == "regression").unwrap();
+        assert_eq!(regression.assessment.score, Some(100));
+        assert!(
+            dt.skills
+                .iter()
+                .filter(|s| s.id != "regression")
+                .all(|s| s.assessment.score.is_none())
+        );
+        assert!(
+            m.iter()
+                .filter(|d| d.id != "debugging-testing")
+                .all(|d| d.history.is_empty())
+        );
     }
 }

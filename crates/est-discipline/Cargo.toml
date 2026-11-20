@@ -7,3 +7,7 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+est-core.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
