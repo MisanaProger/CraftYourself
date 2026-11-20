@@ -54,6 +54,10 @@ pub fn api() -> Router<Runtime> {
             get(conversations::engagement),
         )
         .route(
+            "/conversations/{id}/engagement/raise",
+            post(conversations::raise),
+        )
+        .route(
             "/engagement/escalations/{id}/accept",
             post(conversations::accept),
         )

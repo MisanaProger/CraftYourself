@@ -393,7 +393,16 @@ async fn full_learning_loop() {
     // A new Issue starts at L0 again; the previous level is not inherited.
     let other = h.task(&pid, "Second issue").await;
     let (_, c2) = h.get(&format!("/api/v1/tasks/{other}/conversation")).await;
-    assert_eq!(h.level(c2["id"].as_str().unwrap()).await, 0);
+    let c2 = c2["id"].as_str().unwrap();
+    assert_eq!(h.level(c2).await, 0);
+    let (s, r) = h
+        .post(
+            &format!("/api/v1/conversations/{c2}/engagement/raise"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    assert_eq!(h.level(c2).await, 1, "learner-initiated raise is one step");
     assert_eq!(h.level(&conv).await, 2);
 
     // Own work in the IDE, visible through Git.

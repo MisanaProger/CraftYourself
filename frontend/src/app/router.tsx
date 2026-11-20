@@ -1,22 +1,30 @@
 import { BrowserRouter, Route, Routes } from "react-router";
-import { Layout } from "../components/Layout";
-import { DashboardPage } from "../pages/dashboard/DashboardPage";
-import { ProjectPage } from "../pages/projects/ProjectPage";
-import { ProjectsPage } from "../pages/projects/ProjectsPage";
-import { TasksPage } from "../pages/tasks/TasksPage";
-import { SessionPage } from "../pages/workspace/SessionPage";
+import { AdiPage } from "../analytics/AdiPage";
+import { SkillMatrixPage } from "../analytics/SkillMatrixPage";
+import { ConversationPage } from "../chat/ConversationPage";
+import { TasksPage } from "../issue/TasksPage";
+import { LearningPage } from "../learning/LearningPage";
+import { ProjectPage } from "../project/ProjectPage";
+import { ProjectsPage } from "../project/ProjectsPage";
+import { SettingsPage } from "../settings/SettingsPage";
+import { WorkspaceHome } from "../workspace/WorkspaceHome";
+import { Shell } from "./Shell";
 
 export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<DashboardPage />} />
+        <Route element={<Shell />}>
+          <Route index element={<WorkspaceHome />} />
+          <Route path="chat/:id" element={<ConversationPage />} />
+          <Route path="tasks" element={<TasksPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:id" element={<ProjectPage />} />
-          <Route path="tasks" element={<TasksPage />} />
-          <Route path="sessions/:id" element={<SessionPage />} />
-          <Route path="*" element={<p className="muted">Страница не найдена.</p>} />
+          <Route path="learning" element={<LearningPage />} />
+          <Route path="skills" element={<SkillMatrixPage />} />
+          <Route path="adi" element={<AdiPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<p className="muted pad">Страница не найдена.</p>} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -86,3 +86,11 @@ pub async fn reject(
         rt.app.reject_escalation(&EscalationId::from(id)).await?,
     ))
 }
+
+/// The learner asks for the next engagement level themselves.
+pub async fn raise(
+    State(rt): State<Runtime>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<Message>>> {
+    Ok(Json(rt.app.raise_level(&ConversationId::from(id)).await?))
+}

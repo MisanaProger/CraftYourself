@@ -16,11 +16,16 @@ export function useLiveEvents() {
       socket.onmessage = (msg) => {
         const e = JSON.parse(msg.data) as DomainEvent;
         if (e.kind.startsWith("project.")) qc.invalidateQueries({ queryKey: ["projects"] });
-        if (e.kind.startsWith("task.") || e.kind.startsWith("session.")) qc.invalidateQueries({ queryKey: ["tasks"] });
-        if (e.session_id) {
+        if (e.kind.startsWith("task.") || e.kind.startsWith("session.")) {
+          qc.invalidateQueries({ queryKey: ["tasks"] });
           qc.invalidateQueries({ queryKey: ["sessions"] });
-          qc.invalidateQueries({ queryKey: ["session", e.session_id] });
         }
+        if (e.kind.startsWith("adi.")) qc.invalidateQueries({ queryKey: ["adi"] });
+        if (e.conversation_id) {
+          qc.invalidateQueries({ queryKey: ["conversation", e.conversation_id] });
+          qc.invalidateQueries({ queryKey: ["conversations"] });
+        }
+        if (e.session_id) qc.invalidateQueries({ queryKey: ["session", e.session_id] });
       };
       socket.onclose = () => {
         if (!closed) retry = window.setTimeout(connect, 3000);

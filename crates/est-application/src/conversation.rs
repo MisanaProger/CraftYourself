@@ -225,6 +225,60 @@ impl App {
         Ok(out)
     }
 
+    /// The learner explicitly asks for the next level (one step, never above
+    /// the task's maximum). Their request is the consent.
+    pub async fn raise_level(&self, id: &ConversationId) -> AppResult<Vec<Message>> {
+        let conversation = self.get_conversation(id).await?;
+        let mut state = self.engagement(id).await?;
+        let to = state
+            .level
+            .next()
+            .filter(|n| *n <= state.max_level)
+            .ok_or_else(|| {
+                AppError::Conflict(format!(
+                    "{} is the highest level for this Issue",
+                    state.level.code()
+                ))
+            })?;
+        for mut e in self.ports.engagement.escalations(id).await? {
+            if e.status == EscalationStatus::Proposed {
+                e.reject()?;
+                self.ports.engagement.save_escalation(&e).await?;
+                self.resolve_escalation_card(&e).await?;
+            }
+        }
+        let from = state.level;
+        state.level = to;
+        state.updated_at = est_core::now();
+        self.ports.engagement.save_state(&state).await?;
+        let ev = |kind: &str, payload| {
+            let mut d = DomainEvent::new(kind, payload).conversation(id);
+            if let Some(t) = &conversation.task_id {
+                d = d.task(t);
+            }
+            d
+        };
+        self.emit(ev(
+            events::ESCALATION_ACCEPTED,
+            json!({ "from": from, "to": to, "source": "user" }),
+        ))
+        .await?;
+        self.emit(ev(events::LEVEL_CHANGED, json!({ "from": from, "to": to })))
+            .await?;
+        let notice = Message::new(
+            id,
+            MessageRole::System,
+            format!(
+                "Уровень помощи повышен до {} ({}) по вашему запросу: доступны {}.",
+                to.code(),
+                to.name_ru().to_lowercase(),
+                to.unlocks_ru()
+            ),
+            to,
+        );
+        Ok(vec![self.store(notice).await?])
+    }
+
     /// Learner consents: the level rises by one step and the blocked request
     /// is processed again (§7.4, steps 8–10).
     pub async fn accept_escalation(&self, id: &EscalationId) -> AppResult<Vec<Message>> {

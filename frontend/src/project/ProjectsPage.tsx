@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Card, Empty, ErrorBox } from "../../components/ui";
-import { api } from "../../services/api";
+import { api } from "../services/api";
+import { Card, Empty, ErrorBox, PageTitle } from "../ui";
 
 export function ProjectsPage() {
   const qc = useQueryClient();
@@ -16,10 +16,9 @@ export function ProjectsPage() {
       navigate(`/projects/${p.id}`);
     },
   });
-
   return (
-    <>
-      <h1>Проекты</h1>
+    <div className="page">
+      <PageTitle sub="Локальный репозиторий используется на месте; удалённый клонируется в кэш.">Проекты</PageTitle>
       <Card title="Подключить репозиторий">
         <form
           className="row"
@@ -28,18 +27,13 @@ export function ProjectsPage() {
             if (source.trim()) add.mutate(source.trim());
           }}
         >
-          <input
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            placeholder="/home/me/src/project или https://github.com/owner/repo"
-            aria-label="Путь или URL репозитория"
-          />
-          <button disabled={add.isPending || !source.trim()}>{add.isPending ? "Подключение…" : "Подключить"}</button>
+          <input className="grow" value={source} onChange={(e) => setSource(e.target.value)} placeholder="/home/me/src/project или https://github.com/owner/repo" aria-label="Путь или URL репозитория" />
+          <button className="primary" disabled={add.isPending || !source.trim()}>
+            {add.isPending ? "Подключение…" : "Подключить"}
+          </button>
         </form>
-        <p className="hint">Локальный репозиторий используется на месте; удалённый клонируется в кэш EST.</p>
         <ErrorBox error={add.error} />
       </Card>
-
       <ErrorBox error={projects.error} />
       {projects.data?.length === 0 && <Empty>Пока нет подключённых проектов.</Empty>}
       <div className="grid">
@@ -53,11 +47,11 @@ export function ProjectsPage() {
                   {l.language}
                 </span>
               ))}
-              {p.license ? <span className="tag tag-quiet">{p.license}</span> : <span className="tag tag-warn">лицензия?</span>}
+              {p.license ? <span className="tag quiet">{p.license}</span> : <span className="tag warn">лицензия?</span>}
             </p>
           </Link>
         ))}
       </div>
-    </>
+    </div>
   );
 }
