@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
 
 type Theme = "dark" | "light";
 const KEY = "craft-theme";
@@ -32,8 +33,9 @@ export const useTheme = () => useContext(Ctx);
 
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();
+  const { t } = useT();
   return (
-    <button className="icon-btn" onClick={toggle} aria-label={theme === "dark" ? "Светлая тема" : "Тёмная тема"} title="Сменить тему">
+    <button className="icon-btn" onClick={toggle} aria-label={theme === "dark" ? t("theme.light") : t("theme.dark")} title={t("theme.toggle")}>
       {theme === "dark" ? (
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
           <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" />

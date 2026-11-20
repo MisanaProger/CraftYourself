@@ -311,3 +311,108 @@ code.status { white-space: pre; }
   .msg { grid-template-columns: 32px minmax(0, 1fr); gap: 0.5rem; }
   .avatar { width: 32px; height: 32px; }
 }
+
+/* ---- home & learning ------------------------------------------------------ */
+.page.narrow { max-width: 900px; }
+.hero { margin-bottom: 1.5rem; }
+.hero h1 { font-size: 2rem; }
+.hero p { margin: 0.4rem 0 0; max-width: 60ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.tile { display: flex; flex-direction: column; gap: 0.45rem; margin: 0; min-height: 210px; }
+.tile h3 { text-transform: none; letter-spacing: 0; color: var(--text); font-size: 1.1rem; margin: 0.3rem 0 0; }
+.tile p { margin: 0; flex: 1; }
+.tile-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.tile-icon { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); }
+.tile.disabled { opacity: 0.62; }
+.tile.disabled .tile-icon { color: var(--muted); background: var(--surface-2); }
+.tile-meta { display: flex; gap: 0.35rem; flex-wrap: wrap; color: var(--muted); font-size: 0.82rem; }
+.chip { font-size: 0.75rem; padding: 0.15rem 0.6rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.chip.soon { border-style: dashed; }
+.chip.status-completed { color: var(--ok); border-color: currentColor; }
+.chip.status-started { color: var(--info); border-color: currentColor; }
+.continue-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 0.5rem; }
+.continue-card { display: flex; gap: 0.8rem; align-items: center; color: var(--text); }
+.continue-card svg { color: var(--accent); flex: none; }
+.continue-card div { display: flex; flex-direction: column; min-width: 0; }
+.continue-card .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.program-progress { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: center; margin-bottom: 1.2rem; color: var(--muted); }
+.program-progress .meter { margin: 0; }
+.lessons { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.lesson-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 0.9rem; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem 1rem; }
+.lesson-num { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); font-weight: 700; }
+.lesson-row.completed .lesson-num { background: rgba(60, 207, 122, 0.15); color: var(--ok); }
+.lesson-row.started .lesson-num { background: var(--accent-soft); color: var(--accent); }
+.lesson-link { display: flex; flex-direction: column; color: var(--text); min-width: 0; }
+.lesson-link:hover { text-decoration: none; }
+.lesson-link:hover strong { color: var(--accent); }
+.lesson-nav { display: flex; justify-content: space-between; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.crumbs a { color: var(--muted); }
+.reading { padding: 1.5rem 1.75rem; line-height: 1.65; }
+.reading .md > h2:first-child { display: none; }
+.md h2 { font-size: 1.25rem; margin: 1.3rem 0 0.5rem; }
+.md h3 { font-size: 1rem; text-transform: none; letter-spacing: 0; color: var(--text); margin: 1.2rem 0 0.4rem; }
+.md h4, .md h5 { font-size: 0.95rem; margin: 1rem 0 0.3rem; }
+.md p { margin: 0.45rem 0; }
+.md-table { overflow-x: auto; margin: 0.8rem 0; }
+.md-table table { font-size: 0.88rem; }
+.md-table th { text-transform: none; letter-spacing: 0; }
+.objectives { margin: 0 0 1rem; color: var(--muted); }
+iframe.artifact { width: 100%; height: 720px; display: block; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.quiz { display: flex; flex-direction: column; gap: 1rem; }
+.question { border: 1px solid var(--border); margin: 0; }
+.question legend { float: left; width: 100%; padding: 0; margin-bottom: 0.6rem; font-weight: 600; display: flex; gap: 0.4rem; }
+.question legend .md p { margin: 0; }
+.question.right { border-color: var(--ok); }
+.question.wrong { border-color: var(--warn); }
+.q-code { clear: both; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.82rem; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; overflow-x: auto; white-space: pre; }
+.option { clear: both; display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.45rem 0.6rem; border-radius: 8px; cursor: pointer; }
+.option:hover { background: var(--surface-2); }
+.option input { width: auto; margin-top: 0.3rem; accent-color: var(--accent); }
+.option .md p { margin: 0; }
+.option.answer { background: rgba(60, 207, 122, 0.1); }
+.practice .steps { margin: 0 0 1rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; }
+a.button { display: inline-block; padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border); }
+a.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+a.button:hover { text-decoration: none; }
+
+/* ---- sidebar footer ---------------------------------------------------------- */
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+.sidebar-foot .locality { margin-top: 0; }
+.lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
+.lang-switch button { border: 0; border-radius: 0; background: transparent; padding: 0.25rem 0.6rem; font-size: 0.78rem; color: var(--muted); }
+.lang-switch button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* ---- criteria --------------------------------------------------------------- */
+.criteria { margin: 0.8rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.criteria h3 { margin-bottom: 0; }
+.checklist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.checklist li { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+.checklist label { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; }
+.checklist input { width: 18px; height: 18px; margin-top: 0.15rem; flex: none; accent-color: var(--accent); }
+.checklist .done { color: var(--muted); text-decoration: line-through; }
+.criteria .secondary { width: fit-content; }
+.save-criteria { margin-top: 0.6rem; }
+
+/* ---- sandbox ------------------------------------------------------------------ */
+.sandbox-status { display: flex; gap: 0.5rem; align-items: center; font-size: 0.88rem; margin-bottom: 0.3rem; }
+.sandbox-status i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex: none; }
+.sandbox-status.off i { background: var(--warn); }
+.run-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+.runs { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.run details { border: 1px solid var(--border); border-radius: 10px; padding: 0.5rem 0.7rem; background: var(--surface); }
+.run summary { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; flex-wrap: wrap; list-style: none; }
+.run summary::-webkit-details-marker { display: none; }
+.run summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
+.run-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.run-passed .run-dot { background: var(--ok); }
+.run-failed .run-dot, .run-error .run-dot, .run-timed_out .run-dot { background: var(--danger); }
+.run-running .run-dot { background: var(--info); animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { opacity: 0.35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .run-running .run-dot { animation: none; } }
+pre.output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.74rem; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; overflow: auto; max-height: 40vh; margin: 0.4rem 0 0; white-space: pre; }
+.run-card { display: flex; gap: 0.6rem; align-items: flex-start; }
+.run-card .run-dot { margin-top: 0.45rem; }
+.run-card p { margin: 0.15rem 0 0; }
+.msg-system .bubble:has(.run-card) { border-style: solid; }
+.checklist .md p, .description .md p { margin: 0; }
+.description { margin: 0.4rem 0; }

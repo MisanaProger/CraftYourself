@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
+import { useT } from "../i18n";
 import { api } from "../services/api";
+import { Progress } from "../ui";
 
 export function AdiSummary() {
+  const { t } = useT();
   const adi = useQuery({ queryKey: ["adi"], queryFn: api.adi });
   const a = adi.data?.aggregate;
   return (
@@ -11,15 +14,16 @@ export function AdiSummary() {
       <div className="big">{a?.value != null ? a.value.toFixed(1) : "—"}</div>
       <p className="muted small">
         {!a || a.issues === 0
-          ? "Появится после первой завершённой Issue"
-          : `${adi.data?.status_label ?? ""} · ${a.issues} Issue${a.provisional ? " · предварительно" : ""}`}
+          ? t("summary.adiEmpty")
+          : `${a.status ? t(`gameStatus.${a.status}` as never) : ""} · ${t("summary.issues", { n: a.issues })}${a.provisional ? ` · ${t("summary.provisional")}` : ""}`}
       </p>
     </Link>
   );
 }
 
 export function SkillSummary() {
-  const m = useQuery({ queryKey: ["skills"], queryFn: api.skillMatrix });
+  const { t, lang } = useT();
+  const m = useQuery({ queryKey: ["skills", lang], queryFn: () => api.skillMatrix(lang) });
   const d = m.data?.disciplines ?? [];
   const assessed = d.filter((x) => x.status !== "not_assessed").length;
   return (
@@ -29,26 +33,24 @@ export function SkillSummary() {
         {assessed}
         <span className="muted">/{d.length || "—"}</span>
       </div>
-      <p className="muted small">дисциплин оценено · отсутствие данных ≠ ноль</p>
+      <p className="muted small">{t("summary.esm")}</p>
     </Link>
   );
 }
 
 export function TaskSummary() {
+  const { t } = useT();
   const tasks = useQuery({ queryKey: ["tasks"], queryFn: () => api.tasks() });
-  const t = tasks.data ?? [];
-  const done = t.filter((x) => x.status === "done").length;
-  const pct = t.length ? Math.round((done / t.length) * 100) : 0;
+  const list = tasks.data ?? [];
+  const done = list.filter((x) => x.status === "done").length;
   return (
     <Link to="/tasks" className="card card-link stat">
       <h2>Issues</h2>
       <div className="big">
         {done}
-        <span className="muted">/{t.length}</span>
+        <span className="muted">/{list.length}</span>
       </div>
-      <div className="meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Завершено Issue">
-        <span style={{ width: `${pct}%` }} />
-      </div>
+      <Progress value={list.length ? (done / list.length) * 100 : 0} label={t("summary.issuesDone")} />
     </Link>
   );
 }

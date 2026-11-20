@@ -275,7 +275,8 @@ impl App {
                 to.unlocks_ru()
             ),
             to,
-        );
+        )
+        .with_meta(json!({ "notice": "level_raised", "to": to }));
         Ok(vec![self.store(notice).await?])
     }
 

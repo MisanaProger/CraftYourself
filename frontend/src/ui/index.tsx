@@ -1,26 +1,20 @@
 import type { ReactNode } from "react";
-import { LEVELS, type Level } from "../types/api";
+import { useT, type Key, type T } from "../i18n";
+import { LEVEL_CODES, type Level } from "../types/api";
 
-const STATUS: Record<string, string> = {
-  open: "Открыта",
-  "in-progress": "В работе",
-  done: "Выполнена",
-  archived: "В архиве",
-  active: "В работе",
-  completed: "Завершена",
-  abandoned: "Прервана",
-  not_assessed: "Не оценено",
-  insufficient_evidence: "Мало данных",
-  provisional: "Предварительно",
-  established: "Подтверждено",
-  needs_reassessment: "Нужна перепроверка",
-};
+/** Translates `prefix.value`, falling back to the raw value. */
+export function tv(t: T, prefix: string, value: string) {
+  const key = `${prefix}.${value}` as Key;
+  const s = t(key);
+  return s === key ? value : s;
+}
 
 export function Badge({ value }: { value: string }) {
+  const { t } = useT();
   return (
     <span className={`badge badge-${value}`}>
       <i aria-hidden />
-      {STATUS[value] ?? value}
+      {tv(t, "status", value)}
     </span>
   );
 }
@@ -52,21 +46,44 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="muted">{children}</p>;
 }
 
-export function levelLabel(level: Level) {
-  const l = LEVELS[level];
-  return `${l.code} · ${l.name}`;
+export function levelName(t: T, level: Level) {
+  return t(`level.${level}` as Key);
+}
+
+export function levelLabel(t: T, level: Level) {
+  return `${LEVEL_CODES[level]} · ${levelName(t, level)}`;
 }
 
 export const shortHash = (hash: string) => hash.slice(0, 8);
 export const shortId = (id: string) => id.slice(0, 8).toUpperCase();
-export const formatTime = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-export const formatDate = (iso: string) => new Date(iso).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
 
-export function PageTitle({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
+export function useFormat() {
+  const { lang } = useT();
+  const locale = lang === "uz" ? "uz-Latn-UZ" : lang === "en" ? "en-GB" : "ru-RU";
+  return {
+    time: (iso: string) => new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+    date: (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" }),
+    duration: (ms: number | null) => (ms == null ? "" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`),
+  };
+}
+
+export function PageTitle({ children, sub, actions }: { children: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   return (
-    <header className="page-title">
-      <h1>{children}</h1>
-      {sub && <p className="muted">{sub}</p>}
+    <header className="page-title row-between">
+      <div>
+        <h1>{children}</h1>
+        {sub && <p className="muted">{sub}</p>}
+      </div>
+      {actions}
     </header>
+  );
+}
+
+export function Progress({ value, label }: { value: number; label: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round(value)));
+  return (
+    <div className="meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+      <span style={{ width: `${pct}%` }} />
+    </div>
   );
 }

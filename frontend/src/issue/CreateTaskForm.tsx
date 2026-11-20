@@ -3,11 +3,14 @@ import { useState } from "react";
 import { api } from "../services/api";
 import type { Difficulty, TaskType } from "../types/api";
 import { ErrorBox } from "../ui";
-import { TYPE_LABELS } from "./TaskTable";
+import { TASK_TYPES } from "./TaskTable";
+import { useT } from "../i18n";
+import { tv } from "../ui";
 
 export function CreateTaskForm({ projectId }: { projectId: string }) {
+  const { t, lang } = useT();
   const qc = useQueryClient();
-  const matrix = useQuery({ queryKey: ["skills"], queryFn: api.skillMatrix });
+  const matrix = useQuery({ queryKey: ["skills", lang], queryFn: () => api.skillMatrix(lang) });
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [taskType, setTaskType] = useState<TaskType>("bug-fix");
@@ -29,23 +32,23 @@ export function CreateTaskForm({ projectId }: { projectId: string }) {
         create.mutate({ project_id: projectId, title, description, task_type: taskType, difficulty, disciplines: discipline ? [discipline] : [] });
       }}
     >
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название Issue" aria-label="Название" />
-      <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Проблема, ожидаемое и фактическое поведение" aria-label="Описание" rows={3} />
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("newTask.title")} aria-label={t("newTask.title")} />
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("newTask.description")} aria-label={t("newTask.description")} rows={3} />
       <div className="row">
-        <select value={taskType} onChange={(e) => setTaskType(e.target.value as TaskType)} aria-label="Тип">
-          {Object.entries(TYPE_LABELS).map(([v, l]) => (
+        <select value={taskType} onChange={(e) => setTaskType(e.target.value as TaskType)} aria-label={t("tasks.type")}>
+          {TASK_TYPES.map((v) => (
             <option key={v} value={v}>
-              {l}
+              {tv(t, "taskType", v)}
             </option>
           ))}
         </select>
-        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)} aria-label="Сложность">
-          <option value="beginner">Начальная</option>
-          <option value="intermediate">Средняя</option>
-          <option value="advanced">Высокая</option>
+        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)} aria-label={t("tasks.difficulty")}>
+          <option value="beginner">{tv(t, "difficulty", "beginner")}</option>
+          <option value="intermediate">{tv(t, "difficulty", "intermediate")}</option>
+          <option value="advanced">{tv(t, "difficulty", "advanced")}</option>
         </select>
-        <select value={discipline} onChange={(e) => setDiscipline(e.target.value)} aria-label="Дисциплина">
-          <option value="">Дисциплина…</option>
+        <select value={discipline} onChange={(e) => setDiscipline(e.target.value)} aria-label={t("newTask.discipline")}>
+          <option value="">{t("newTask.discipline")}…</option>
           {matrix.data?.disciplines.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
@@ -53,7 +56,7 @@ export function CreateTaskForm({ projectId }: { projectId: string }) {
           ))}
         </select>
         <button className="primary" disabled={!title.trim() || create.isPending}>
-          Создать
+          {t("common.create")}
         </button>
       </div>
       <ErrorBox error={create.error} />

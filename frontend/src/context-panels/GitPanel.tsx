@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { LearningSession } from "../types/api";
 import { Empty, ErrorBox, shortHash } from "../ui";
@@ -15,6 +16,7 @@ function lineClass(line: string) {
 }
 
 export function GitPanel({ session }: { session: LearningSession | null }) {
+  const { t } = useT();
   const [target, setTarget] = useState<Target>("base");
   const o = useQuery({ queryKey: ["session", session?.id], queryFn: () => api.session(session!.id), enabled: !!session, refetchInterval: 5000 });
   const version = o.data ? `${o.data.commits[0]?.hash}:${o.data.changes.map((c) => c.code + c.path).join()}` : "";
@@ -23,11 +25,11 @@ export function GitPanel({ session }: { session: LearningSession | null }) {
     queryFn: () => api.diff(session!.id, target),
     enabled: !!session,
   });
-  if (!session) return <Empty>Начните Issue, чтобы получить рабочий каталог.</Empty>;
+  if (!session) return <Empty>{t("git.noSession")}</Empty>;
   return (
     <div className="git">
       <ErrorBox error={o.error ?? diff.error} />
-      <h3>Свои коммиты</h3>
+      <h3>{t("git.commits")}</h3>
       {o.data?.commits.length ? (
         <ul className="plain">
           {o.data.commits.map((c) => (
@@ -37,9 +39,9 @@ export function GitPanel({ session }: { session: LearningSession | null }) {
           ))}
         </ul>
       ) : (
-        <Empty>Пока нет.</Empty>
+        <Empty>{t("git.noCommits")}</Empty>
       )}
-      <h3>Незафиксировано</h3>
+      <h3>{t("git.uncommitted")}</h3>
       {o.data?.changes.length ? (
         <ul className="plain">
           {o.data.changes.map((c) => (
@@ -49,14 +51,14 @@ export function GitPanel({ session }: { session: LearningSession | null }) {
           ))}
         </ul>
       ) : (
-        <Empty>Рабочий каталог чист.</Empty>
+        <Empty>{t("git.clean")}</Empty>
       )}
-      <div className="seg" role="tablist" aria-label="Что сравнивать">
+      <div className="seg" role="tablist" aria-label={t("git.compare")}>
         {(
           [
-            ["base", "С начала задачи"],
-            ["worktree", "Рабочий каталог"],
-            ["staged", "Индекс"],
+            ["base", t("git.sinceBase")],
+            ["worktree", t("git.worktree")],
+            ["staged", t("git.staged")],
           ] as const
         ).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={target === id} className={target === id ? "on" : ""} onClick={() => setTarget(id)}>
@@ -64,7 +66,7 @@ export function GitPanel({ session }: { session: LearningSession | null }) {
           </button>
         ))}
       </div>
-      {diff.data === "" && <Empty>Изменений нет.</Empty>}
+      {diff.data === "" && <Empty>{t("git.noChanges")}</Empty>}
       {diff.data && (
         <pre className="diff">
           {diff.data.split("\n").map((l, i) => (

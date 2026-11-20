@@ -63,6 +63,9 @@ pub struct ObservedFeatures {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Factor {
+    /// Stable code for localized display, e.g. `answers_l4`.
+    pub code: String,
+    pub count: u32,
     pub description: String,
     /// Positive raises ADI (more dependence), negative lowers it.
     pub points: f64,
@@ -91,9 +94,11 @@ pub struct IssueScore {
 /// raising the level without using it costs nothing (§10.4).
 pub fn score_issue(f: &ObservedFeatures) -> IssueScore {
     let mut factors = Vec::new();
-    let mut add = |n: u32, per: f64, cap: f64, what: &str| {
+    let mut add = |n: u32, per: f64, cap: f64, code: &str, what: &str| {
         if n > 0 {
             factors.push(Factor {
+                code: code.into(),
+                count: n,
                 description: format!("{what}: {n}"),
                 points: (f64::from(n) * per).clamp(-cap, cap),
             });
@@ -103,28 +108,56 @@ pub fn score_issue(f: &ObservedFeatures) -> IssueScore {
         f.answers_by_level[4],
         18.0,
         60.0,
+        "answers_l4",
         "подробные решения от ИИ (L4)",
     );
     add(
         f.answers_by_level[3],
         9.0,
         40.0,
+        "answers_l3",
         "фрагменты реализации от ИИ (L3)",
     );
     add(
         f.answers_by_level[2],
         3.0,
         18.0,
+        "answers_l2",
         "объяснения и диагностика от ИИ (L2)",
     );
-    add(f.answers_by_level[1], 1.0, 8.0, "подсказки (L1)");
-    add(f.conceptual_questions, 0.5, 4.0, "концептуальные вопросы");
-    add(f.own_commits, -6.0, 18.0, "собственные коммиты");
-    add(f.test_runs, -2.0, 8.0, "самостоятельные запуски тестов");
+    add(
+        f.answers_by_level[1],
+        1.0,
+        8.0,
+        "answers_l1",
+        "подсказки (L1)",
+    );
+    add(
+        f.conceptual_questions,
+        0.5,
+        4.0,
+        "conceptual",
+        "концептуальные вопросы",
+    );
+    add(
+        f.own_commits,
+        -6.0,
+        18.0,
+        "own_commits",
+        "собственные коммиты",
+    );
+    add(
+        f.test_runs,
+        -2.0,
+        8.0,
+        "test_runs",
+        "самостоятельные запуски тестов",
+    );
     add(
         f.escalations_rejected,
         -2.0,
         6.0,
+        "rejected_escalations",
         "отклонённые повышения уровня",
     );
 

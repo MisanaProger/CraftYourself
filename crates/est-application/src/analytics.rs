@@ -154,7 +154,7 @@ impl App {
         })
     }
 
-    pub async fn skill_matrix(&self) -> AppResult<SkillMatrix> {
+    pub async fn skill_matrix(&self, lang: &str) -> AppResult<SkillMatrix> {
         let done: Vec<_> = self
             .ports
             .tasks
@@ -163,7 +163,7 @@ impl App {
             .into_iter()
             .filter(|t| t.status == TaskStatus::Done)
             .collect();
-        let disciplines = est_discipline::matrix(|id| {
+        let disciplines = est_discipline::matrix(lang, |id| {
             done.iter()
                 .filter(|t| t.disciplines.iter().any(|d| d == id))
                 .count() as u32

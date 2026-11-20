@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -5,6 +6,7 @@ import { api } from "../services/api";
 import { Card, Empty, ErrorBox, PageTitle } from "../ui";
 
 export function ProjectsPage() {
+  const { t } = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
@@ -18,8 +20,8 @@ export function ProjectsPage() {
   });
   return (
     <div className="page">
-      <PageTitle sub="Локальный репозиторий используется на месте; удалённый клонируется в кэш.">Проекты</PageTitle>
-      <Card title="Подключить репозиторий">
+      <PageTitle sub={t("projects.subtitle")}>{t("nav.projects")}</PageTitle>
+      <Card title={t("projects.connect")}>
         <form
           className="row"
           onSubmit={(e) => {
@@ -27,15 +29,15 @@ export function ProjectsPage() {
             if (source.trim()) add.mutate(source.trim());
           }}
         >
-          <input className="grow" value={source} onChange={(e) => setSource(e.target.value)} placeholder="/home/me/src/project или https://github.com/owner/repo" aria-label="Путь или URL репозитория" />
+          <input className="grow" value={source} onChange={(e) => setSource(e.target.value)} placeholder={t("projects.placeholder")} aria-label={t("projects.sourceAria")} />
           <button className="primary" disabled={add.isPending || !source.trim()}>
-            {add.isPending ? "Подключение…" : "Подключить"}
+            {add.isPending ? t("projects.connecting") : t("projects.connectButton")}
           </button>
         </form>
         <ErrorBox error={add.error} />
       </Card>
       <ErrorBox error={projects.error} />
-      {projects.data?.length === 0 && <Empty>Пока нет подключённых проектов.</Empty>}
+      {projects.data?.length === 0 && <Empty>{t("projects.empty")}</Empty>}
       <div className="grid">
         {projects.data?.map((p) => (
           <Link key={p.id} to={`/projects/${p.id}`} className="card card-link">
@@ -47,7 +49,7 @@ export function ProjectsPage() {
                   {l.language}
                 </span>
               ))}
-              {p.license ? <span className="tag quiet">{p.license}</span> : <span className="tag warn">лицензия?</span>}
+              {p.license ? <span className="tag quiet">{p.license}</span> : <span className="tag warn">{t("projects.noLicenseTag")}</span>}
             </p>
           </Link>
         ))}

@@ -16,13 +16,28 @@ pub async fn adi_history(State(rt): State<Runtime>) -> ApiResult<Json<Vec<AdiHis
     Ok(Json(rt.app.adi_overview().await?.history))
 }
 
-pub async fn disciplines(State(rt): State<Runtime>) -> ApiResult<Json<SkillMatrix>> {
-    Ok(Json(rt.app.skill_matrix().await?))
+#[derive(serde::Deserialize)]
+pub struct LangQuery {
+    pub lang: Option<String>,
+}
+
+fn lang(q: &LangQuery) -> &'static str {
+    est_application::learning::normalize_lang(q.lang.as_deref())
+}
+
+pub async fn disciplines(
+    State(rt): State<Runtime>,
+    axum::extract::Query(q): axum::extract::Query<LangQuery>,
+) -> ApiResult<Json<SkillMatrix>> {
+    Ok(Json(rt.app.skill_matrix(lang(&q)).await?))
 }
 
 /// Flat list of skills with their discipline.
-pub async fn skills(State(rt): State<Runtime>) -> ApiResult<Json<Vec<Value>>> {
-    let m = rt.app.skill_matrix().await?;
+pub async fn skills(
+    State(rt): State<Runtime>,
+    axum::extract::Query(q): axum::extract::Query<LangQuery>,
+) -> ApiResult<Json<Vec<Value>>> {
+    let m = rt.app.skill_matrix(lang(&q)).await?;
     Ok(Json(
         m.disciplines
             .iter()

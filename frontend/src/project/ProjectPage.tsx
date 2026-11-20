@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { CreateTaskForm } from "../issue/CreateTaskForm";
@@ -7,37 +8,38 @@ import { api } from "../services/api";
 import { Card, Empty, ErrorBox, PageTitle } from "../ui";
 
 export function ProjectPage() {
+  const { t } = useT();
   const { id = "" } = useParams();
   const project = useQuery({ queryKey: ["projects", id], queryFn: () => api.project(id) });
   const commands = useQuery({ queryKey: ["projects", id, "commands"], queryFn: () => api.projectCommands(id) });
   const tasks = useQuery({ queryKey: ["tasks", { project: id }], queryFn: () => api.tasks(id) });
   const p = project.data;
   if (project.error) return <ErrorBox error={project.error} />;
-  if (!p) return <p className="muted pad">Загрузка…</p>;
+  if (!p) return <p className="muted pad">{t("common.loading")}</p>;
   return (
     <div className="page">
       <PageTitle sub={<span className="mono">{p.local_path}</span>}>{p.name}</PageTitle>
       {!p.license && (
-        <p className="warn-box">Лицензия не определена: без лицензии код защищён авторским правом. Изучайте его локально и не распространяйте.</p>
+        <p className="warn-box">{t("projects.noLicense")}</p>
       )}
       <div className="two-col">
-        <Card title="Языки">
+        <Card title={t("projects.languages")}>
           {p.languages.length === 0 ? (
-            <Empty>Не обнаружены.</Empty>
+            <Empty>{t("projects.noLanguages")}</Empty>
           ) : (
             <ul className="plain">
               {p.languages.map((l) => (
                 <li key={l.language}>
-                  <strong>{l.language}</strong> <span className="muted">· {l.files} файлов {l.build_systems.length > 0 && `· ${l.build_systems.join(", ")}`}</span>
+                  <strong>{l.language}</strong> <span className="muted">· {t("projects.files", { n: l.files })} {l.build_systems.length > 0 && `· ${l.build_systems.join(", ")}`}</span>
                 </li>
               ))}
             </ul>
           )}
-          {p.license && <p className="muted small">Лицензия: {p.license}</p>}
+          {p.license && <p className="muted small">{t("projects.license")}: {p.license}</p>}
         </Card>
-        <Card title="Команды проверки">
+        <Card title={t("projects.commands")}>
           <ErrorBox error={commands.error} />
-          {commands.data?.length === 0 && <Empty>Адаптеры не нашли команд.</Empty>}
+          {commands.data?.length === 0 && <Empty>{t("projects.noCommands")}</Empty>}
           <ul className="plain">
             {commands.data?.map((c, i) => (
               <li key={i}>
@@ -47,15 +49,15 @@ export function ProjectPage() {
           </ul>
         </Card>
       </div>
-      <Card title="Issues проекта">
+      <Card title={t("projects.issues")}>
         <ErrorBox error={tasks.error} />
         {tasks.data && <TaskTable tasks={tasks.data} />}
       </Card>
       <div className="two-col">
-        <Card title="Новая Issue">
+        <Card title={t("projects.newIssue")}>
           <CreateTaskForm projectId={p.id} />
         </Card>
-        <Card title="Импорт упражнения">
+        <Card title={t("projects.import")}>
           <ImportExerciseForm />
         </Card>
       </div>

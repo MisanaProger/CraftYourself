@@ -12,7 +12,7 @@
   h1 { font-size:1.1rem; margin:0 0 .5rem; }
   .rule { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem; margin-bottom:1rem; }
   .rule code { font-family: ui-monospace, Menlo, monospace; }
-  form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:end; margin-bottom:1rem; }
+  .add { display:flex; gap:.5rem; flex-wrap:wrap; align-items:end; margin-bottom:1rem; }
   label { display:flex; flex-direction:column; gap:.2rem; font-size:.85rem; color:var(--muted); }
   input, select, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:.45rem .6rem; }
   input { width:9rem; }
@@ -33,13 +33,13 @@
 <body>
 <h1 id="title"></h1>
 <div class="rule" id="rule"></div>
-<form id="add">
+<div class="add" id="add">
   <label><span id="l-total"></span><input id="total" type="number" min="0" max="100000" step="1" required></label>
   <label><span id="l-expected"></span>
     <select id="expected"><option value="0">0%</option><option value="5">5%</option><option value="10">10%</option></select>
   </label>
-  <button type="submit" id="b-add"></button>
-</form>
+  <button type="button" id="b-add"></button>
+</div>
 <table>
   <thead><tr><th id="h-total"></th><th id="h-expected"></th><th id="h-result"></th><th></th></tr></thead>
   <tbody id="cases"></tbody>
@@ -103,15 +103,17 @@
     });
   }
 
-  $("add").addEventListener("submit", (e) => {
-    e.preventDefault();
+  // The frame is sandboxed without `allow-forms`: no <form> submission.
+  function addCase() {
     const total = Math.floor(Number($("total").value));
     if (!Number.isFinite(total) || total < 0 || total > 100000) return;
     if (cases.length >= 30) return;
     cases.push({ total, expected: Number($("expected").value) });
     $("total").value = "";
     render();
-  });
+  }
+  $("b-add").addEventListener("click", addCase);
+  $("total").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addCase(); } });
   $("reset").onclick = () => { cases = []; render(); $("report").hidden = true; };
 
   $("check").onclick = () => {
@@ -152,9 +154,13 @@
     $("advice").textContent = advice.join(" ");
     $("report").hidden = false;
 
-    // Limited protocol with the platform: progress only, nothing else.
+    // Limited protocol with the platform: progress and size, nothing else.
     window.parent.postMessage({ type: "est:progress", version: 1, score, completed }, "*");
   };
+  // Let the platform size the frame to the content.
+  const report = () => window.parent.postMessage({ type: "est:resize", version: 1, height: document.documentElement.scrollHeight }, "*");
+  new ResizeObserver(report).observe(document.body);
+  report();
 })();
 </script>
 </body>

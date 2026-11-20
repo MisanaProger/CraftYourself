@@ -1,10 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 
 /**
- * Minimal, safe Markdown renderer for mentor messages: fenced code blocks,
- * paragraphs, lists, inline code, bold and italics. Everything is rendered
+ * Minimal, safe Markdown renderer for mentor messages and lessons: headings,
+ * fenced code blocks, tables, paragraphs, lists, inline code, bold, italics. Everything is rendered
  * as React text nodes — no HTML from the model ever reaches the DOM.
  */
+const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
+const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+const BLOCK_START = /^\s*(```|#{1,4}\s|([-*]|\d+\.)\s+|\|)/;
+
 export function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   const lines = text.split("\n");
@@ -18,6 +22,43 @@ export function Markdown({ text }: { text: string }) {
       while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
       i++;
       blocks.push(<CodeBlock key={blocks.length} lang={fence[1]} code={code.join("\n")} />);
+      continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) {
+      const level = Math.min(heading[1].length + 1, 5);
+      const H = `h${level}` as "h2" | "h3" | "h4" | "h5";
+      blocks.push(<H key={blocks.length}>{inline(heading[2])}</H>);
+      i++;
+      continue;
+    }
+    if (isTableRow(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const head = cells(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i])) rows.push(cells(lines[i++]));
+      blocks.push(
+        <div className="md-table" key={blocks.length}>
+          <table>
+            <thead>
+              <tr>
+                {head.map((h, k) => (
+                  <th key={k}>{inline(h)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, k) => (
+                <tr key={k}>
+                  {r.map((c, j) => (
+                    <td key={j}>{inline(c)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
       continue;
     }
     if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
@@ -39,7 +80,7 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^\s*```/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])) para.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && (para.length === 0 || !BLOCK_START.test(lines[i]))) para.push(lines[i++]);
     blocks.push(<p key={blocks.length}>{para.map((p, k) => <Fragment key={k}>{k > 0 && <br />}{inline(p)}</Fragment>)}</p>);
   }
   return <div className="md">{blocks}</div>;
@@ -66,8 +107,8 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
   return (
     <figure className="code-block">
       <figcaption>
-        <span>{lang || "код"}</span>
-        <button className="icon-btn small" onClick={() => navigator.clipboard?.writeText(code)} aria-label="Копировать код" title="Копировать">
+        <span>{lang || "code"}</span>
+        <button className="icon-btn small" onClick={() => navigator.clipboard?.writeText(code)} aria-label="Copy" title="Copy">
           ⧉
         </button>
       </figcaption>

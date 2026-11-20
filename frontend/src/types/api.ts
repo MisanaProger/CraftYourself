@@ -50,9 +50,15 @@ export interface Task {
   disciplines: string[];
   base_revision: string | null;
   test_command: string | null;
+  acceptance_criteria: Criterion[];
   mentor: { max_level: Level; denied_paths: string[] };
   docs: { title: string; url: string; topics: string[] }[];
   created_at: string;
+}
+
+export interface Criterion {
+  text: string;
+  done: boolean;
 }
 
 export interface NewTask {
@@ -112,7 +118,17 @@ export interface SourceLink {
 export type Card =
   | { type: "sources"; symbols: string[]; links: SourceLink[] }
   | { type: "escalation"; escalation_id: string; from: Level; to: Level; unlocks: string; status: "proposed" | "accepted" | "rejected" }
-  | { type: "policy_notice"; text: string };
+  | { type: "policy_notice"; text: string; code: string | null }
+  | {
+      type: "sandbox_run";
+      run_id: string;
+      kind: RunKind;
+      command: string;
+      status: RunStatus;
+      summary: TestSummary | null;
+      exit_code: number | null;
+      duration_ms: number | null;
+    };
 
 export interface Message {
   id: string;
@@ -159,6 +175,8 @@ export interface ConversationView {
 }
 
 export interface AdiFactor {
+  code: string;
+  count: number;
   description: string;
   points: number;
 }
@@ -224,10 +242,109 @@ export interface DomainEvent {
   at: string;
 }
 
-export const LEVELS: { level: Level; code: string; name: string }[] = [
-  { level: 0, code: "L0", name: "Сократический" },
-  { level: 1, code: "L1", name: "Наводящий" },
-  { level: 2, code: "L2", name: "Объясняющий" },
-  { level: 3, code: "L3", name: "Демонстрационный" },
-  { level: 4, code: "L4", name: "Активный" },
-];
+export const LEVEL_CODES = ["L0", "L1", "L2", "L3", "L4"] as const;
+
+export type RunKind = "test" | "build" | "check" | "setup" | "custom";
+export type RunStatus = "running" | "passed" | "failed" | "timed_out" | "error";
+
+export interface TestSummary {
+  passed: number;
+  failed: number;
+  ignored: number;
+}
+
+export interface SandboxRun {
+  id: string;
+  session_id: string;
+  task_id: string;
+  kind: RunKind;
+  command: string;
+  workdir: string;
+  image: string | null;
+  network: boolean;
+  status: RunStatus;
+  exit_code: number | null;
+  summary: TestSummary | null;
+  duration_ms: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface RunRequest {
+  kind?: RunKind;
+  command?: string;
+  allow_network?: boolean;
+}
+
+export interface SandboxInfo {
+  runtime: string | null;
+  available: boolean;
+  reason: string | null;
+  limits: Record<string, unknown>;
+}
+
+export type LessonKind = "reading" | "quiz" | "artifact" | "practice";
+export type LessonStatus = "not_started" | "started" | "completed";
+
+export interface ProgramTile {
+  id: string;
+  title: string;
+  summary: string;
+  status: "available" | "coming_soon";
+  icon: string;
+  level: string;
+  minutes: number;
+  disciplines: string[];
+  lessons: number;
+  completed: number;
+}
+
+export interface LessonSummary {
+  id: string;
+  kind: LessonKind;
+  title: string;
+  minutes: number;
+  status: LessonStatus;
+  score: number | null;
+}
+
+export interface ProgramView {
+  id: string;
+  title: string;
+  summary: string;
+  disciplines: string[];
+  lessons: LessonSummary[];
+}
+
+export type LessonBody =
+  | { kind: "reading"; markdown: string }
+  | { kind: "quiz"; questions: { id: string; text: string; code: string | null; options: string[] }[]; pass_percent: number }
+  | { kind: "artifact"; artifact_id: string; entrypoint: string; objectives: string[] }
+  | { kind: "practice"; conversation_id: string | null; session_id: string | null; task_status: TaskStatus | null };
+
+export interface LessonView extends LessonSummary {
+  program_id: string;
+  intro: string;
+  body: LessonBody;
+  previous: string | null;
+  next: string | null;
+}
+
+export interface LessonProgress {
+  program_id: string;
+  lesson_id: string;
+  status: LessonStatus;
+  score: number | null;
+  attempts: number;
+}
+
+export interface QuizResult {
+  correct: number;
+  total: number;
+  score: number;
+  passed: boolean;
+  results: { id: string; chosen: number | null; correct: boolean; answer: number; explanation: string }[];
+}

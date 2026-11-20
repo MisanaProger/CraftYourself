@@ -1,21 +1,14 @@
+import { useT } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { api } from "../services/api";
 import type { Task } from "../types/api";
-import { Badge, Empty, ErrorBox, shortId } from "../ui";
+import { Badge, Empty, ErrorBox, shortId, tv } from "../ui";
 
-export const TYPE_LABELS: Record<string, string> = {
-  "bug-fix": "Исправление",
-  feature: "Функция",
-  refactoring: "Рефакторинг",
-  documentation: "Документация",
-  performance: "Производительность",
-  testing: "Тестирование",
-  regression: "Регрессия",
-};
-const DIFFICULTY: Record<string, string> = { beginner: "Начальная", intermediate: "Средняя", advanced: "Высокая" };
+export const TASK_TYPES = ["bug-fix", "feature", "refactoring", "documentation", "performance", "testing", "regression"] as const;
 
 export function TaskTable({ tasks, projectNames }: { tasks: Task[]; projectNames?: Record<string, string> }) {
+  const { t } = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const start = useMutation({
@@ -26,7 +19,7 @@ export function TaskTable({ tasks, projectNames }: { tasks: Task[]; projectNames
       if (s.conversation_id) navigate(`/chat/${s.conversation_id}`);
     },
   });
-  if (tasks.length === 0) return <Empty>Задач пока нет. Создайте задачу на странице проекта или импортируйте упражнение.</Empty>;
+  if (tasks.length === 0) return <Empty>{t("tasks.empty")}</Empty>;
   return (
     <>
       <ErrorBox error={start.error} />
@@ -35,30 +28,30 @@ export function TaskTable({ tasks, projectNames }: { tasks: Task[]; projectNames
           <thead>
             <tr>
               <th>Issue</th>
-              {projectNames && <th>Проект</th>}
-              <th>Тип</th>
-              <th>Сложность</th>
-              <th>Статус</th>
+              {projectNames && <th>{t("tasks.project")}</th>}
+              <th>{t("tasks.type")}</th>
+              <th>{t("tasks.difficulty")}</th>
+              <th>{t("tasks.status")}</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr key={t.id}>
+            {tasks.map((task) => (
+              <tr key={task.id}>
                 <td>
-                  <span className="issue-id">EST-{shortId(t.id)}</span> {t.title}
-                  {t.source.type === "exercise" && <span className="tag">упражнение</span>}
+                  <span className="issue-id">EST-{shortId(task.id)}</span> {task.title}
+                  {task.source.type === "exercise" && <span className="tag">{t("tasks.exercise")}</span>}
                 </td>
-                {projectNames && <td>{projectNames[t.project_id] ?? "—"}</td>}
-                <td>{TYPE_LABELS[t.task_type]}</td>
-                <td>{DIFFICULTY[t.difficulty]}</td>
+                {projectNames && <td>{projectNames[task.project_id] ?? "—"}</td>}
+                <td>{tv(t, "taskType", task.task_type)}</td>
+                <td>{tv(t, "difficulty", task.difficulty)}</td>
                 <td>
-                  <Badge value={t.status} />
+                  <Badge value={task.status} />
                 </td>
                 <td className="right">
-                  {t.status !== "archived" && (
-                    <button className={t.status === "in-progress" ? "primary small" : "secondary small"} disabled={start.isPending} onClick={() => start.mutate(t.id)}>
-                      {t.status === "in-progress" ? "Продолжить" : t.status === "done" ? "Вернуться" : "Начать"}
+                  {task.status !== "archived" && (
+                    <button className={task.status === "in-progress" ? "primary small" : "secondary small"} disabled={start.isPending} onClick={() => start.mutate(task.id)}>
+                      {task.status === "in-progress" ? t("tasks.continue") : task.status === "done" ? t("tasks.reopen") : t("tasks.start")}
                     </button>
                   )}
                 </td>
