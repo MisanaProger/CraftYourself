@@ -65,6 +65,9 @@ Interface concepts: [`docs/design/`](docs/design)
   interactive HTML5 pages and quizzes. Answers are validated in code before
   they are stored, quizzes are graded on the server, and progress is tracked
   like in the built-in programs.
+- **Live answers.** The mentor's answer appears as the model writes it.
+  Only text the policy never removes is shown early: code blocks and HTML
+  pages are withheld until the whole answer has been checked.
 - **Formulas and pages from the model.** LaTeX (`$…$`, `$$…$$`) is rendered
   with KaTeX in lessons, quizzes and the chat. An HTML5 page the mentor
   attaches (a ```` ```html ```` block) is shown in an isolated frame without
