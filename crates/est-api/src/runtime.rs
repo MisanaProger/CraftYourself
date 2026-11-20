@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use est_application::Ports;
-use est_application::ports::{EventPublisher, LlmProvider, Sandbox};
+use est_application::ports::{EventPublisher, LlmProvider, LlmSlot, Sandbox};
 use est_application::{App, AppSettings};
 use est_core::DomainEvent;
 use est_git::port::CliGit;
@@ -13,6 +13,7 @@ use est_workspace::{EditorLauncher, EstHome};
 use tokio::sync::broadcast;
 
 use crate::config::Config;
+use crate::llm::ProviderRegistry;
 
 /// Fans domain events out to WebSocket clients.
 pub struct BroadcastPublisher(pub broadcast::Sender<DomainEvent>);
@@ -30,15 +31,19 @@ pub struct Runtime {
     pub events: broadcast::Sender<DomainEvent>,
     pub home: EstHome,
     pub config: Arc<Config>,
+    /// AI providers connected from the settings page.
+    pub providers: Arc<ProviderRegistry>,
 }
 
 impl Runtime {
     /// Initialises `~/.est` (if needed), opens the database and wires ports.
     pub async fn build(home: EstHome, config: Config) -> anyhow::Result<Self> {
-        let llm: Option<Arc<dyn LlmProvider>> = match &config.llm {
-            Some(cfg) => Some(Arc::new(est_ai::OpenAiCompatible::new(cfg)?)),
-            None => None,
-        };
+        home.init()?;
+        // The provider picked in the UI wins; `[llm]` from config.toml is
+        // used until the learner picks one. An unavailable provider (e.g. a
+        // removed key) does not stop the daemon: the mentor reports that no
+        // model is connected.
+        let llm = ProviderRegistry::new(&home, config.llm.clone()).startup();
         let sandbox: Arc<dyn Sandbox> = Arc::new(est_sandbox::ContainerSandbox::detect(
             config.sandbox.clone(),
         ));
@@ -68,7 +73,7 @@ impl Runtime {
             sandbox_runs: store.clone(),
             learning: store,
             sandbox,
-            llm,
+            llm: Arc::new(LlmSlot::new(llm)),
             publisher: Arc::new(BroadcastPublisher(events.clone())),
             git: Arc::new(CliGit::default()),
             inspector: Arc::new(Inspector::default()),
@@ -84,6 +89,7 @@ impl Runtime {
         Ok(Self {
             app: Arc::new(app),
             events,
+            providers: Arc::new(ProviderRegistry::new(&home, config.llm.clone())),
             home,
             config: Arc::new(config),
         })

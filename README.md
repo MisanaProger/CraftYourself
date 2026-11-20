@@ -56,9 +56,11 @@ Interface concepts: [`docs/design/`](docs/design)
 - **Documentation boundary.** Questions about concrete APIs never reach the
   model: the answer is a set of links to the definition in the source code, the
   task's documentation and the API reference.
-- **AI Gateway.** Any OpenAI-compatible endpoint: local Ollama, the llama.cpp
-  server or a remote API (https only; the key comes from an environment
-  variable).
+- **AI Gateway.** Claude, ChatGPT, Gemini, DeepSeek, Kimi and Qwen by API
+  key, coding-plan subscriptions (Kimi Code, Qwen Coding Plan), local Ollama
+  or any OpenAI-compatible API — connected and switched in *Settings → AI
+  providers*. Remote providers must use https; keys stay on the device
+  (`~/.est/secrets`, owner-only) or come from an environment variable.
 - **ADI and Skill Matrix.** The AI Dependency Index of each completed Issue is
   computed from observed events and averaged with double decay (30 days /
   10 Issues). The Engineering Skill Matrix shows untested skills as
@@ -91,7 +93,7 @@ then `cargo tauri build` in `apps/desktop`.
 Pick the *Tests* program on the home page and start with the first lesson.
 
 Without a desktop session (a server, WSL), the same daemon serves the
-interface in a browser: `cargo run -p est-cli -- serve` → http://127.0.0.1:7878. To connect a model, add to `~/.est/config/config.toml`:
+interface in a browser: `cargo run -p est-cli -- serve` → http://127.0.0.1:7878. Connect a model in *Settings → AI providers*, or add to `~/.est/config/config.toml`:
 
 ```toml
 [llm]

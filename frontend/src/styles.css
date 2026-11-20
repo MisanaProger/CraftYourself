@@ -83,7 +83,8 @@ code.block { display: block; padding: 0.5rem 0.7rem; }
 .push { margin-left: auto; }
 
 /* ---- shell -------------------------------------------------------------- */
-.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.18s ease; }
+.shell.collapsed { grid-template-columns: 72px minmax(0, 1fr); }
 .sidebar {
   position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 0.25rem;
   padding: 1.4rem 1rem 1rem; background: var(--bg-2); border-right: 1px solid var(--border);
@@ -108,6 +109,20 @@ code.block { display: block; padding: 0.5rem 0.7rem; }
 .locality strong { display: block; letter-spacing: 0.05em; }
 .locality span { color: var(--muted); }
 .main { min-width: 0; }
+.sidebar-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.sidebar-toggle { flex: none; }
+
+/* collapsed: icons only */
+.shell.collapsed .sidebar { padding: 1.1rem 0.6rem 1rem; overflow: hidden; }
+.shell.collapsed .sidebar-head { flex-direction: column; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+.shell.collapsed .brand { padding: 0; }
+.shell.collapsed .tagline,
+.shell.collapsed .nav a span,
+.shell.collapsed .lang-switch,
+.shell.collapsed .locality div { display: none; }
+.shell.collapsed .nav a { justify-content: center; padding: 0.6rem 0; border-left-width: 0; }
+.shell.collapsed .locality { justify-content: center; padding: 0.5rem 0 0; }
+@media (prefers-reduced-motion: reduce) { .shell { transition: none; } }
 
 /* ---- generic ---------------------------------------------------------- */
 .page { max-width: 1120px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
@@ -296,7 +311,11 @@ code.status { white-space: pre; }
   .context { border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell, .shell.collapsed { grid-template-columns: 1fr; }
+  .shell.collapsed .sidebar { padding: 0.75rem 16px; }
+  .shell.collapsed .sidebar-head { flex-direction: row; margin-bottom: 0; }
+  .shell.collapsed .nav, .shell.collapsed .sidebar-foot { display: none; }
+  .sidebar-head { width: 100%; align-items: center; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 0.75rem 16px; gap: 0.5rem; }
   .tagline, .locality { display: none; }
   .logo-name { font-size: 1.05rem; }
@@ -416,3 +435,24 @@ pre.output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 
 .msg-system .bubble:has(.run-card) { border-style: solid; }
 .checklist .md p, .description .md p { margin: 0; }
 .description { margin: 0.4rem 0; }
+
+/* ---- AI providers --------------------------------------------------------- */
+.stack.tight { gap: 0.3rem; }
+.field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
+.field > span:first-child { color: var(--muted); }
+.field input, .field select { width: 100%; }
+.providers { list-style: none; padding: 0; margin: 0 0 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.provider { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+.provider.on { border-color: var(--accent); }
+.provider-main { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 1 1 260px; }
+.provider-main .mono { overflow-wrap: anywhere; }
+.provider-actions { flex: none; }
+.provider .provider-form { flex-basis: 100%; }
+.provider-form { padding-top: 0.25rem; }
+.add-provider { border-top: 1px solid var(--border); padding-top: 0.5rem; margin-top: 0.5rem; }
+.add-provider h3 { margin-top: 0.4rem; }
+.tabs.flush { padding: 0; gap: 1.2rem; flex-wrap: wrap; }
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.5rem; }
+.preset { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; text-align: left; padding: 0.65rem 0.8rem; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); }
+.preset:hover { border-color: var(--accent); }
+.preset.on { border-color: var(--accent); background: var(--accent-soft); }

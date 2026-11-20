@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LangSwitch, useT } from "../i18n";
 import { api } from "../services/api";
 import { Card, Empty, ErrorBox, PageTitle, useFormat } from "../ui";
+import { AiProviders } from "./AiProviders";
 
 export function SettingsPage() {
   const { t } = useT();
@@ -43,7 +44,7 @@ export function SettingsPage() {
             <dt>{t("settings.data")}</dt>
             <dd>{t("settings.dataLocal")}</dd>
             <dt>{t("settings.model")}</dt>
-            <dd>{llm ? `${llm.model} · ${llm.endpoint}` : t("settings.noModel")}</dd>
+            <dd>{llm ? `${llm.name} · ${llm.model} · ${llm.endpoint}` : t("settings.noModel")}</dd>
             <dt>{t("settings.context")}</dt>
             <dd>{llm ? llm.remote ? <span className="warn">{t("settings.contextRemote")}</span> : t("settings.contextLocal") : "—"}</dd>
             <dt>{t("settings.sandbox")}</dt>
@@ -59,6 +60,7 @@ export function SettingsPage() {
           <ErrorBox error={exp.error} />
         </Card>
       </div>
+      <AiProviders />
       <Card title={t("settings.conversations")}>
         <p className="muted small">{t("settings.deleteHint")}</p>
         <ErrorBox error={del.error ?? conversations.error} />

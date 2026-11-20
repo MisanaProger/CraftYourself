@@ -136,6 +136,8 @@ pub mod events {
     pub const CONVERSATION_DELETED: &str = "conversation.deleted";
     pub const DOCS_REDIRECT: &str = "documentation.redirect";
     pub const AI_ANSWER: &str = "ai.answer";
+    /// The learner connected, switched or disconnected an AI provider.
+    pub const AI_PROVIDER_CHANGED: &str = "ai.provider.changed";
     pub const ENGAGEMENT_INITIALIZED: &str = "engagement.level.initialized";
     pub const ESCALATION_PROPOSED: &str = "engagement.escalation.proposed";
     pub const ESCALATION_ACCEPTED: &str = "engagement.escalation.accepted";

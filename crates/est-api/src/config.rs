@@ -92,13 +92,16 @@ bind = "127.0.0.1:7878"
 # Built React frontend served by the daemon.
 # frontend_dir = "/path/to/Engineer-Craft/frontend/dist"
 
-# AI Gateway: any OpenAI-compatible endpoint. Local Ollama:
+# AI Gateway. Cloud providers (Claude, ChatGPT, Gemini, DeepSeek, Kimi,
+# Qwen) are easiest to connect from Settings → AI providers; the choice made
+# there wins over this section. Local Ollama:
 # [llm]
 # base_url = "http://127.0.0.1:11434/v1"
 # model = "qwen2.5-coder:7b"
 # A remote provider must use https; the key is read from an environment
 # variable and never stored here:
 # api_key_env = "CRAFT_LLM_API_KEY"
+# protocol = "openai-compatible"   # openai-compatible | openai | anthropic
 
 # Sandbox for build/test runs: Podman or Docker. Network is off unless you
 # allow it for a run; the workspace is mounted read-only.
