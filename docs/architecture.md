@@ -39,6 +39,8 @@
 | `est-languages`, `est-projects` | §15 | языковые адаптеры (только описание команд), лицензия |
 | `est-workspace` | §16 | `~/.est`, рабочие каталоги, запуск внешней IDE |
 | `est-git` | §14 | безопасная обёртка над git CLI |
+| `est-sandbox` | §17 | запуск команд в Docker/Podman: без сети по умолчанию, лимиты, read-only |
+| `est-learning` | §18 | программы, уроки, тесты, артефакты, шаблоны практики из `learning-artifacts/` |
 | `est-storage` | §19 | SQLite, миграции `migrations/` |
 | `est-api`, `est-cli` | §22, §16 | REST, WebSocket, Host/Origin-защита; CLI `est` |
 
@@ -80,11 +82,11 @@
 |---|---|
 | 0. Foundation | ✅ workspace, React, REST, SQLite + миграции, конфиг, логирование, CI |
 | 1. Project & Workspace | ✅ локальные репозитории, языки, рабочие каталоги, IDE, status/diff |
-| 2. Language & Sandbox | ◐ адаптеры Rust/C/C++/Python/JS описывают команды; **sandbox не реализован** |
+| 2. Language & Sandbox | ✅ адаптеры Rust/C/C++/Python/JS, песочница Docker/Podman с лимитами и изоляцией, разбор итогов тестов |
 | 3. Task & Issue Engine | ✅ задачи, импорт упражнений, статусы, сессии; ◯ импорт GitHub Issues |
 | 4. Chat-first Conversation Engine | ✅ диалоги, история, события, WebSocket; ◯ потоковая генерация |
 | 5. AI Gateway & Engagement | ✅ провайдер, L0–L4, эскалация с согласием, Documentation Boundary; ◯ permission gates внешних действий (таких действий пока нет) |
 | 6. Conversation Intelligence | ◯ Session Summary, Knowledge Profile, рекомендации; ✅ экспорт/удаление |
 | 7. ADI & ESM | ✅ ADI с двойным затуханием, каталог ESM; ◯ оценка навыков по evidence |
-| 8. Interactive Learning | ◯ |
+| 8. Interactive Learning | ◐ программы, уроки, тесты с проверкой на сервере, артефакты в sandboxed iframe, практические проекты; ◯ остальные программы |
 | 9. Git Workflow & Analytics | ◯ |

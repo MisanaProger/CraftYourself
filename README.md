@@ -1,61 +1,71 @@
 <p align="center"><img src="docs/design/logo.jpg" alt="Craft Yourself — Build skills. Not dependencies." width="520"></p>
 
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a> · <a href="README.uz.md">O‘zbekcha</a></p>
+
 # Craft Yourself
 
-Open-source тренажёр инженерных навыков: реальные проекты и Issues, внешняя
-IDE, чат с ИИ-наставником, который **помогает рассуждать, а не решает за вас**.
+An open-source trainer for engineering skills. You work on real projects and
+Issues in your own IDE; a chat mentor **helps you reason instead of solving the
+task for you**.
 
 > **Build skills. Not dependencies.**
 
-Архитектура: [`docs/architecture.md`](docs/architecture.md) (по ТЗ v0.3).
-Концепты интерфейса: [`docs/design/`](docs/design).
+Architecture: [`docs/architecture.md`](docs/architecture.md) (spec v0.3) ·
+Plan: [`ROADMAP.md`](ROADMAP.md) · For AI agents: [`AGENTS.md`](AGENTS.md) ·
+Interface concepts: [`docs/design/`](docs/design)
 
-## Что уже работает
+## What works today
 
-- **Проекты и рабочие каталоги.** Подключение локального Git-репозитория (или
-  клонирование удалённого), определение языков и лицензии, отдельный рабочий
-  каталог и ветка на каждую Issue в `~/.est/workspaces`, открытие во внешней IDE.
-- **Issues.** Ручное создание и импорт упражнений (Exercise Manifest, TOML),
-  статусы, привязка к дисциплинам Skill Matrix, завершение Issue.
-- **Chat-first ментор.** Диалог на каждую Issue; сообщения и события хранятся
-  в SQLite и переживают перезапуск.
-- **Engagement Controller L0–L4.** Новая Issue всегда начинается с L0. Запрос
-  выше текущего уровня блокируется, и Craft Yourself предлагает подняться на
-  **одну** ступень; ответ повышенного уровня возможен только после явного
-  согласия. Ограничения проверяются кодом: модель не может сама поднять
-  уровень, а лишний код в ответе вырезается политикой.
-- **Documentation Boundary.** Вопросы о конкретных API не уходят в модель:
-  ответ — ссылки на определение в исходниках, документацию задачи и API
-  Reference. Скрытые тесты упражнения наставнику недоступны.
-- **AI Gateway.** Любой OpenAI-совместимый endpoint: локальная Ollama,
-  llama.cpp server или внешний API (только https, ключ — из переменной
-  окружения). Без модели политика работает, но ответов модели нет.
-- **ADI.** Финальный индекс зависимости от ИИ после завершения Issue — по
-  наблюдаемым событиям, с факторами и уверенностью; среднее с двойным
-  затуханием (30 дней / 10 Issue), игровой статус с обязательной оговоркой.
-- **Engineering Skill Matrix.** Каталог из 10 дисциплин; непроверенный навык
-  показывается как «не оценено», а не 0. ADI и ESM независимы.
-- **Приватность.** Данные локально; экспорт всей истории в JSON; удаление
-  диалога вместе с событиями и ADI задачи.
+- **Learning programs.** A home page with program tiles. The first program,
+  *Tests: running and quality*, has reading lessons, server-graded quizzes, an
+  interactive boundary-values trainer in a sandboxed iframe and a practice
+  project (a regression test, red → green) run in the sandbox. Six more
+  programs are listed as *coming soon*.
+- **Projects and workspaces.** Connect a local Git repository (or clone a
+  remote one); languages and license are detected; every Issue gets its own
+  directory and branch in `~/.est/workspaces` and opens in your editor.
+- **Sandbox.** Tests, checks and custom commands run in Docker or Podman: no
+  network unless you allow it for a run, CPU/memory/process/time limits, all
+  capabilities dropped, a read-only root filesystem, and your workspace mounted
+  read-only. Results appear in the chat and in the Tests tab.
+- **Chat-first mentor with engagement levels L0–L4.** Every new Issue starts at
+  L0 (Socratic). A request above the current level is blocked and the mentor
+  proposes raising it by **one** step; nothing is unlocked without consent.
+  At L0 the mentor still formulates **acceptance criteria** and **translates**
+  text. Limits are enforced in code: excess code is removed from answers.
+- **Documentation boundary.** Questions about concrete APIs never reach the
+  model: the answer is a set of links to the definition in the source code, the
+  task's documentation and the API reference.
+- **AI Gateway.** Any OpenAI-compatible endpoint: local Ollama, the llama.cpp
+  server or a remote API (https only; the key comes from an environment
+  variable).
+- **ADI and Skill Matrix.** The AI Dependency Index of each completed Issue is
+  computed from observed events and averaged with double decay (30 days /
+  10 Issues). The Engineering Skill Matrix shows untested skills as
+  *not assessed*, never as zero. The two are independent.
+- **Interface in Russian, English and Uzbek**; dark and light themes.
+- **Privacy.** Data stays local; export your whole history as JSON; delete a
+  conversation together with its events and the Issue's ADI.
 
-Пока **нет**: Sandbox Manager (запуск тестов в контейнере), Session Summary и
-Knowledge Profile, оценка навыков по evidence, интерактивные материалы, проверка
-коммитов и PR. См. «Состояние этапов» в архитектуре.
+Not yet: Session Summary and Knowledge Profile, evidence-based skill
+assessment, commit and PR review, the other learning programs. See the
+[roadmap](ROADMAP.md).
 
-## Быстрый старт
+## Quick start
 
-Нужны Rust ≥ 1.85, `git` и Node.js 22 (для интерфейса).
+You need Rust ≥ 1.85, `git`, Node.js 22 (for the interface) and, to run tests
+in the sandbox, Podman or Docker.
 
 ```sh
 cargo build --release
 (cd frontend && npm ci && npm run build)
 
-./target/release/est init                 # ~/.est и config.toml
-./target/release/est project add ~/src/my-project
-./target/release/est serve                # http://127.0.0.1:7878
+./target/release/est init                    # ~/.est and config.toml
+./target/release/est serve                   # http://127.0.0.1:7878
 ```
 
-Модель подключается в `~/.est/config/config.toml`:
+Open the address, pick the *Tests* program on the home page and start with
+the first lesson. To connect a model, add to `~/.est/config/config.toml`:
 
 ```toml
 [llm]
@@ -66,27 +76,29 @@ model = "qwen2.5-coder:7b"
 ### CLI
 
 ```sh
+est project add ~/src/my-project
 est task import exercises/examples/globset-escape-roundtrip.toml
-est task start <id> --open        # рабочий каталог + IDE
+est task start <id> --open          # workspace + editor
 cd "$(est workspace path)"
-est chat "Нашёл функцию escape, что проверить дальше?"
-est escalation accept             # или reject
-est workspace status
-est task complete <id>            # финальный ADI
+est chat "I found the escape function, what should I check next?"
+est escalation accept               # or reject
+est test                            # run tests in the sandbox
+est task complete <id>              # final ADI
 est adi
 est data export --output history.json
 ```
 
-## Разработка
+## Development
 
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
-cd frontend && npm run dev        # http://localhost:5173 → API на :7878
+cd frontend && npm run dev           # http://localhost:5173 → API on :7878
+EST_SANDBOX_IT=1 cargo test -p est-sandbox   # real-container isolation test
 ```
 
-## Лицензия
+## License
 
-Файл [LICENSE](LICENSE) — GPL-3.0. В ТЗ v0.3 лицензия проекта отмечена как
-TBD; окончательный выбор за владельцем репозитория.
+The [LICENSE](LICENSE) file is GPL-3.0. Spec v0.3 lists the project license
+as TBD; the final choice belongs to the repository owner.
