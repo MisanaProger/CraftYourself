@@ -279,10 +279,25 @@ pub struct ProviderInfo {
     pub remote: bool,
 }
 
+/// Receives the answer's text as it arrives.
+pub type DeltaSink<'a> = &'a (dyn Fn(&str) + Send + Sync);
+
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn info(&self) -> ProviderInfo;
     async fn generate(&self, request: LlmRequest) -> AppResult<LlmResponse>;
+    /// Like [`LlmProvider::generate`], passing text to `on_delta` as it
+    /// arrives; the returned response is the whole answer. Providers that
+    /// cannot stream deliver it in one piece.
+    async fn generate_stream(
+        &self,
+        request: LlmRequest,
+        on_delta: DeltaSink<'_>,
+    ) -> AppResult<LlmResponse> {
+        let response = self.generate(request).await?;
+        on_delta(&response.content);
+        Ok(response)
+    }
 }
 
 /// The currently active AI Gateway provider. The learner can switch
