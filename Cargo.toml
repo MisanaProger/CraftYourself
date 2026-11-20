@@ -1,36 +1,47 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/MisanaProger/Engineer-Craft"
-rust-version = "1.80"
+rust-version = "1.85"
 
 [workspace.dependencies]
 est-core = { path = "crates/est-core" }
-est-exercise = { path = "crates/est-exercise" }
-est-git = { path = "crates/est-git" }
-est-policy = { path = "crates/est-policy" }
+est-domain = { path = "crates/est-domain" }
+est-application = { path = "crates/est-application" }
+est-api = { path = "crates/est-api" }
 est-storage = { path = "crates/est-storage" }
+est-git = { path = "crates/est-git" }
+est-projects = { path = "crates/est-projects" }
+est-exercises = { path = "crates/est-exercises" }
+est-workspace = { path = "crates/est-workspace" }
+est-languages = { path = "crates/est-languages" }
+est-ai-policy = { path = "crates/est-ai-policy" }
+est-documentation = { path = "crates/est-documentation" }
 
 anyhow = "1"
-axum = "0.8"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = { version = "0.3", default-features = false }
 globset = "0.4"
+http-body-util = "0.1"
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "json"] }
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
 toml = "0.8"
 tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
-regex = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
-http-body-util = "0.1"

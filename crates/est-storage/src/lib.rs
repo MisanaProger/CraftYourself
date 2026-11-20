@@ -1,565 +1,698 @@
-//! Persistence for the Local Edition (SQLite via SQLx).
+//! SQLite implementation of the repository ports (architecture v0.2, §12).
 //!
-//! Queries use runtime-checked SQL so the crate builds without a live
-//! database. The schema is kept to portable SQL so a PostgreSQL backend
-//! (full Local Edition / Cloud Edition) can be added behind the same API.
+//! Queries are checked at runtime, so the crate builds without a database.
+//! A PostgreSQL implementation can provide the same ports later.
 
 use std::path::Path;
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc};
+use async_trait::async_trait;
+use est_application::ports::{
+    EventLog, ProjectRepository, SessionRepository, StoredEvent, TaskRepository, User,
+    UserRepository,
+};
+use est_application::{AppError, AppResult};
+use est_core::{DomainEvent, ProjectId, SessionId, TaskId, Timestamp, UserId};
+use est_domain::{
+    LanguageDetection, LearningSession, NewProject, NewTask, Project, SessionStatus, Task,
+    TaskSource, TaskStatus,
+};
 use serde::Serialize;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{FromRow, SqlitePool};
-use uuid::Uuid;
-
-#[derive(Debug, thiserror::Error)]
-pub enum StorageError {
-    #[error("database error: {0}")]
-    Db(#[from] sqlx::Error),
-    #[error("migration error: {0}")]
-    Migrate(#[from] sqlx::migrate::MigrateError),
-    #[error("{0} not found")]
-    NotFound(&'static str),
-    #[error("{0}")]
-    Conflict(String),
-}
-
-pub type Result<T> = std::result::Result<T, StorageError>;
-
-#[derive(Debug, Clone, Serialize, FromRow)]
-pub struct User {
-    pub id: String,
-    pub display_name: String,
-    pub is_local: bool,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, FromRow)]
-pub struct Project {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub repository_url: String,
-    pub license: Option<String>,
-    pub language: Option<String>,
-    pub default_branch: Option<String>,
-    pub head_revision: String,
-    #[serde(skip)]
-    pub local_path: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewProject {
-    pub name: String,
-    pub description: Option<String>,
-    pub repository_url: String,
-    pub license: Option<String>,
-    pub language: Option<String>,
-    pub default_branch: Option<String>,
-    pub head_revision: String,
-    pub local_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, FromRow)]
-pub struct ExerciseRecord {
-    pub id: String,
-    pub version: String,
-    pub title: String,
-    pub category: String,
-    pub difficulty: String,
-    pub repository: String,
-    pub revision: String,
-    pub manifest_toml: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewExercise<'a> {
-    pub id: &'a str,
-    pub version: &'a str,
-    pub title: &'a str,
-    pub category: &'a str,
-    pub difficulty: &'a str,
-    pub repository: &'a str,
-    pub revision: &'a str,
-    pub manifest_toml: &'a str,
-}
-
-#[derive(Debug, Clone, Serialize, FromRow)]
-pub struct Session {
-    pub id: String,
-    pub user_id: String,
-    pub exercise_id: String,
-    pub project_id: String,
-    #[serde(skip)]
-    pub workspace_path: String,
-    pub branch: String,
-    pub base_revision: String,
-    pub status: String,
-    pub started_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewSession<'a> {
-    pub id: &'a str,
-    pub user_id: &'a str,
-    pub exercise_id: &'a str,
-    pub project_id: &'a str,
-    pub workspace_path: &'a str,
-    pub branch: &'a str,
-    pub base_revision: &'a str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionStatus {
-    Active,
-    Completed,
-    Abandoned,
-}
-
-impl SessionStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SessionStatus::Active => "active",
-            SessionStatus::Completed => "completed",
-            SessionStatus::Abandoned => "abandoned",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, FromRow)]
-pub struct Event {
-    pub id: i64,
-    pub session_id: String,
-    pub kind: String,
-    #[sqlx(json)]
-    pub payload: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
+use serde::de::DeserializeOwned;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow};
+use sqlx::{Row, SqlitePool};
 
 #[derive(Clone)]
-pub struct Store {
+pub struct SqliteStore {
     pool: SqlitePool,
 }
 
-pub fn new_id() -> String {
-    Uuid::new_v4().to_string()
+fn db(e: sqlx::Error) -> AppError {
+    match &e {
+        sqlx::Error::Database(d) if d.is_unique_violation() => {
+            AppError::Conflict(format!("already exists: {}", d.message()))
+        }
+        _ => AppError::Infrastructure(format!("database: {e}")),
+    }
 }
 
-impl Store {
+fn corrupt(what: &str, e: impl std::fmt::Display) -> AppError {
+    AppError::Infrastructure(format!("stored {what} is invalid: {e}"))
+}
+
+/// `TaskType::BugFix` → `"bug-fix"`.
+fn enum_str<T: Serialize>(v: &T) -> String {
+    match serde_json::to_value(v) {
+        Ok(serde_json::Value::String(s)) => s,
+        other => panic!("not a unit enum: {other:?}"),
+    }
+}
+
+fn parse_enum<T: DeserializeOwned>(what: &str, s: &str) -> AppResult<T> {
+    serde_json::from_value(serde_json::Value::String(s.to_owned())).map_err(|e| corrupt(what, e))
+}
+
+fn to_json<T: Serialize>(v: &T) -> String {
+    serde_json::to_string(v).expect("domain values serialize")
+}
+
+fn from_json<T: DeserializeOwned>(what: &str, s: &str) -> AppResult<T> {
+    serde_json::from_str(s).map_err(|e| corrupt(what, e))
+}
+
+impl SqliteStore {
     /// Opens (creating if needed) a database file and applies migrations.
-    pub async fn open(path: &Path) -> Result<Self> {
+    pub async fn open(path: &Path) -> AppResult<Self> {
         let opts = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(true)
             .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Wal);
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5));
         Self::connect(opts, 8).await
     }
 
     /// In-memory database, for tests.
-    pub async fn in_memory() -> Result<Self> {
-        let opts = SqliteConnectOptions::from_str("sqlite::memory:")?.foreign_keys(true);
-        // A single connection: every in-memory connection is its own database.
+    pub async fn in_memory() -> AppResult<Self> {
+        let opts = SqliteConnectOptions::from_str("sqlite::memory:")
+            .map_err(db)?
+            .foreign_keys(true);
+        // One connection: each in-memory connection is a separate database.
         Self::connect(opts, 1).await
     }
 
-    async fn connect(opts: SqliteConnectOptions, max: u32) -> Result<Self> {
+    async fn connect(opts: SqliteConnectOptions, max: u32) -> AppResult<Self> {
         let pool = SqlitePoolOptions::new()
             .max_connections(max)
             .connect_with(opts)
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
+            .await
+            .map_err(db)?;
+        sqlx::migrate!("../../migrations")
+            .run(&pool)
+            .await
+            .map_err(|e| AppError::Infrastructure(format!("migration failed: {e}")))?;
         Ok(Self { pool })
     }
 
-    // ---- users -----------------------------------------------------------
+    async fn languages(&self, project: &str) -> AppResult<Vec<LanguageDetection>> {
+        let rows = sqlx::query(
+            "SELECT language, files, build_systems FROM project_languages \
+             WHERE project_id = ? ORDER BY files DESC, language",
+        )
+        .bind(project)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?;
+        rows.iter()
+            .map(|r| {
+                Ok(LanguageDetection {
+                    language: r.get("language"),
+                    files: r.get::<i64, _>("files") as u32,
+                    build_systems: from_json("build systems", r.get("build_systems"))?,
+                })
+            })
+            .collect()
+    }
 
-    /// Returns the implicit local user, creating it on first start.
-    pub async fn ensure_local_user(&self) -> Result<User> {
-        if let Some(u) = sqlx::query_as::<_, User>("SELECT * FROM users WHERE is_local = 1 LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await?
+    async fn project_from_row(&self, r: &SqliteRow) -> AppResult<Project> {
+        let id: String = r.get("id");
+        Ok(Project {
+            languages: self.languages(&id).await?,
+            id: ProjectId::from(id),
+            name: r.get("name"),
+            repository_url: r.get("repository_url"),
+            local_path: r.get::<String, _>("local_path").into(),
+            primary_language: r.get("primary_language"),
+            license: r.get("license"),
+            created_at: r.get("created_at"),
+        })
+    }
+
+    async fn projects_where(&self, clause: &str, arg: Option<&str>) -> AppResult<Vec<Project>> {
+        let sql = format!("SELECT * FROM projects {clause} ORDER BY created_at DESC");
+        let mut q = sqlx::query(&sql);
+        if let Some(a) = arg {
+            q = q.bind(a);
+        }
+        let rows = q.fetch_all(&self.pool).await.map_err(db)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(self.project_from_row(r).await?);
+        }
+        Ok(out)
+    }
+}
+
+fn task_from_row(r: &SqliteRow) -> AppResult<Task> {
+    Ok(Task {
+        id: TaskId::from(r.get::<String, _>("id")),
+        project_id: ProjectId::from(r.get::<String, _>("project_id")),
+        title: r.get("title"),
+        description: r.get("description"),
+        task_type: parse_enum("task type", r.get("task_type"))?,
+        difficulty: parse_enum("difficulty", r.get("difficulty"))?,
+        source: from_json("task source", r.get("source"))?,
+        status: parse_enum("task status", r.get("status"))?,
+        learning_goals: from_json("learning goals", r.get("learning_goals"))?,
+        skills: from_json("skills", r.get("skills"))?,
+        base_revision: r.get("base_revision"),
+        test_command: r.get("test_command"),
+        mentor: from_json("mentor settings", r.get("mentor"))?,
+        docs: from_json("docs", r.get("docs"))?,
+        created_at: r.get("created_at"),
+    })
+}
+
+fn session_from_row(r: &SqliteRow) -> AppResult<LearningSession> {
+    let status: String = r.get("status");
+    Ok(LearningSession {
+        id: SessionId::from(r.get::<String, _>("id")),
+        user_id: UserId::from(r.get::<String, _>("user_id")),
+        project_id: ProjectId::from(r.get::<String, _>("project_id")),
+        task_id: TaskId::from(r.get::<String, _>("task_id")),
+        workspace_path: r.get::<String, _>("workspace_path").into(),
+        branch: r.get("branch"),
+        base_revision: r.get("base_revision"),
+        status: SessionStatus::parse(&status).ok_or_else(|| corrupt("session status", &status))?,
+        started_at: r.get("started_at"),
+        finished_at: r.get("finished_at"),
+    })
+}
+
+fn path_str(p: &Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
+#[async_trait]
+impl UserRepository for SqliteStore {
+    async fn local_user(&self) -> AppResult<User> {
+        if let Some(r) =
+            sqlx::query("SELECT id, display_name FROM users WHERE is_local = 1 LIMIT 1")
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(db)?
         {
-            return Ok(u);
+            return Ok(User {
+                id: UserId::from(r.get::<String, _>("id")),
+                display_name: r.get("display_name"),
+            });
         }
         let user = User {
-            id: new_id(),
+            id: UserId::generate(),
             display_name: "Local learner".into(),
-            is_local: true,
-            created_at: Utc::now(),
         };
         sqlx::query(
             "INSERT INTO users (id, display_name, is_local, created_at) VALUES (?, ?, 1, ?)",
         )
-        .bind(&user.id)
+        .bind(user.id.as_str())
         .bind(&user.display_name)
-        .bind(user.created_at)
+        .bind(est_core::now())
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(db)?;
         Ok(user)
     }
+}
 
-    // ---- projects --------------------------------------------------------
-
-    pub async fn insert_project(&self, p: NewProject) -> Result<Project> {
-        let id = new_id();
-        let res = sqlx::query(
-            "INSERT INTO projects (id, name, description, repository_url, license, language, \
-             default_branch, head_revision, local_path, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+#[async_trait]
+impl ProjectRepository for SqliteStore {
+    async fn create(&self, p: NewProject) -> AppResult<Project> {
+        let id = ProjectId::generate();
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        sqlx::query(
+            "INSERT INTO projects (id, name, repository_url, local_path, primary_language, license, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(&id)
+        .bind(id.as_str())
         .bind(&p.name)
-        .bind(&p.description)
         .bind(&p.repository_url)
+        .bind(path_str(&p.local_path))
+        .bind(p.primary_language())
         .bind(&p.license)
-        .bind(&p.language)
-        .bind(&p.default_branch)
-        .bind(&p.head_revision)
-        .bind(&p.local_path)
-        .bind(Utc::now())
+        .bind(est_core::now())
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        for l in &p.languages {
+            sqlx::query(
+                "INSERT INTO project_languages (project_id, language, files, build_systems) VALUES (?, ?, ?, ?)",
+            )
+            .bind(id.as_str())
+            .bind(&l.language)
+            .bind(i64::from(l.files))
+            .bind(to_json(&l.build_systems))
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        }
+        tx.commit().await.map_err(db)?;
+        ProjectRepository::get(self, &id)
+            .await?
+            .ok_or_else(|| AppError::Infrastructure("project vanished after insert".into()))
+    }
+
+    async fn get(&self, id: &ProjectId) -> AppResult<Option<Project>> {
+        Ok(self
+            .projects_where("WHERE id = ?", Some(id.as_str()))
+            .await?
+            .pop())
+    }
+
+    async fn find_by_path(&self, path: &Path) -> AppResult<Option<Project>> {
+        Ok(self
+            .projects_where("WHERE local_path = ?", Some(&path_str(path)))
+            .await?
+            .pop())
+    }
+
+    async fn find_by_url(&self, url: &str) -> AppResult<Option<Project>> {
+        Ok(self
+            .projects_where("WHERE repository_url = ?", Some(url))
+            .await?
+            .pop())
+    }
+
+    async fn list(&self) -> AppResult<Vec<Project>> {
+        self.projects_where("", None).await
+    }
+}
+
+#[async_trait]
+impl TaskRepository for SqliteStore {
+    async fn create(&self, t: NewTask) -> AppResult<Task> {
+        let id = TaskId::generate();
+        let (exercise_id, exercise_version) = match &t.source {
+            TaskSource::Exercise { id, version } => (Some(id.clone()), Some(version.clone())),
+            _ => (None, None),
+        };
+        sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, task_type, difficulty, status, source, \
+             exercise_id, exercise_version, learning_goals, skills, base_revision, test_command, mentor, docs, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id.as_str())
+        .bind(t.project_id.as_str())
+        .bind(t.title.trim())
+        .bind(&t.description)
+        .bind(enum_str(&t.task_type))
+        .bind(enum_str(&t.difficulty))
+        .bind(enum_str(&TaskStatus::Open))
+        .bind(to_json(&t.source))
+        .bind(exercise_id)
+        .bind(exercise_version)
+        .bind(to_json(&t.learning_goals))
+        .bind(to_json(&t.skills))
+        .bind(&t.base_revision)
+        .bind(&t.test_command)
+        .bind(to_json(&t.mentor.clone().unwrap_or_default()))
+        .bind(to_json(&t.docs))
+        .bind(est_core::now())
         .execute(&self.pool)
-        .await;
-        match res {
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
-                return Err(StorageError::Conflict(format!(
-                    "project for {} already exists",
-                    p.repository_url
-                )))
+        .await
+        .map_err(db)?;
+        TaskRepository::get(self, &id)
+            .await?
+            .ok_or_else(|| AppError::Infrastructure("task vanished after insert".into()))
+    }
+
+    async fn get(&self, id: &TaskId) -> AppResult<Option<Task>> {
+        sqlx::query("SELECT * FROM tasks WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(task_from_row)
+            .transpose()
+    }
+
+    async fn list(&self, project: Option<&ProjectId>) -> AppResult<Vec<Task>> {
+        let rows = match project {
+            Some(p) => {
+                sqlx::query("SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at DESC")
+                    .bind(p.as_str())
+                    .fetch_all(&self.pool)
+                    .await
             }
-            other => {
-                other?;
+            None => {
+                sqlx::query("SELECT * FROM tasks ORDER BY created_at DESC")
+                    .fetch_all(&self.pool)
+                    .await
             }
         }
-        self.get_project(&id).await
+        .map_err(db)?;
+        rows.iter().map(task_from_row).collect()
     }
 
-    pub async fn get_project(&self, id: &str) -> Result<Project> {
-        sqlx::query_as("SELECT * FROM projects WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StorageError::NotFound("project"))
-    }
-
-    pub async fn find_project_by_url(&self, url: &str) -> Result<Option<Project>> {
-        Ok(
-            sqlx::query_as("SELECT * FROM projects WHERE repository_url = ?")
-                .bind(url)
-                .fetch_optional(&self.pool)
-                .await?,
-        )
-    }
-
-    pub async fn list_projects(&self) -> Result<Vec<Project>> {
-        Ok(
-            sqlx::query_as("SELECT * FROM projects ORDER BY created_at DESC")
-                .fetch_all(&self.pool)
-                .await?,
-        )
-    }
-
-    // ---- exercises -------------------------------------------------------
-
-    /// Inserts a new exercise or replaces an existing one with the same id.
-    pub async fn upsert_exercise(&self, e: NewExercise<'_>) -> Result<ExerciseRecord> {
-        let now = Utc::now();
-        sqlx::query(
-            "INSERT INTO exercises (id, version, title, category, difficulty, repository, revision, \
-             manifest_toml, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
-             ON CONFLICT(id) DO UPDATE SET version = excluded.version, title = excluded.title, \
-             category = excluded.category, difficulty = excluded.difficulty, \
-             repository = excluded.repository, revision = excluded.revision, \
-             manifest_toml = excluded.manifest_toml, updated_at = excluded.updated_at",
-        )
-        .bind(e.id)
-        .bind(e.version)
-        .bind(e.title)
-        .bind(e.category)
-        .bind(e.difficulty)
-        .bind(e.repository)
-        .bind(e.revision)
-        .bind(e.manifest_toml)
-        .bind(now)
-        .bind(now)
-        .execute(&self.pool)
-        .await?;
-        self.get_exercise(e.id).await
-    }
-
-    pub async fn get_exercise(&self, id: &str) -> Result<ExerciseRecord> {
-        sqlx::query_as("SELECT * FROM exercises WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StorageError::NotFound("exercise"))
-    }
-
-    pub async fn list_exercises(&self) -> Result<Vec<ExerciseRecord>> {
-        Ok(sqlx::query_as("SELECT * FROM exercises ORDER BY title")
-            .fetch_all(&self.pool)
-            .await?)
-    }
-
-    // ---- sessions --------------------------------------------------------
-
-    pub async fn create_session(&self, s: NewSession<'_>) -> Result<Session> {
-        let now = Utc::now();
-        sqlx::query(
-            "INSERT INTO sessions (id, user_id, exercise_id, project_id, workspace_path, branch, \
-             base_revision, status, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
-        )
-        .bind(s.id)
-        .bind(s.user_id)
-        .bind(s.exercise_id)
-        .bind(s.project_id)
-        .bind(s.workspace_path)
-        .bind(s.branch)
-        .bind(s.base_revision)
-        .bind(now)
-        .bind(now)
-        .execute(&self.pool)
-        .await?;
-        self.get_session(s.id).await
-    }
-
-    pub async fn get_session(&self, id: &str) -> Result<Session> {
-        sqlx::query_as("SELECT * FROM sessions WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StorageError::NotFound("session"))
-    }
-
-    pub async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>> {
-        Ok(
-            sqlx::query_as("SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await?,
-        )
-    }
-
-    pub async fn set_session_status(&self, id: &str, status: SessionStatus) -> Result<Session> {
-        let res = sqlx::query("UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?")
-            .bind(status.as_str())
-            .bind(Utc::now())
-            .bind(id)
+    async fn set_status(&self, id: &TaskId, status: TaskStatus) -> AppResult<()> {
+        let res = sqlx::query("UPDATE tasks SET status = ? WHERE id = ?")
+            .bind(enum_str(&status))
+            .bind(id.as_str())
             .execute(&self.pool)
-            .await?;
+            .await
+            .map_err(db)?;
         if res.rows_affected() == 0 {
-            return Err(StorageError::NotFound("session"));
+            return Err(AppError::NotFound("task".into()));
         }
-        self.get_session(id).await
+        Ok(())
     }
 
-    // ---- events ----------------------------------------------------------
-
-    pub async fn record_event(
+    async fn find_exercise(
         &self,
-        session_id: &str,
-        kind: &str,
-        payload: &serde_json::Value,
-    ) -> Result<i64> {
-        let now = Utc::now();
-        let id = sqlx::query(
-            "INSERT INTO events (session_id, kind, payload, created_at) VALUES (?, ?, ?, ?)",
+        project: &ProjectId,
+        exercise_id: &str,
+        version: &str,
+    ) -> AppResult<Option<Task>> {
+        sqlx::query(
+            "SELECT * FROM tasks WHERE project_id = ? AND exercise_id = ? AND exercise_version = ?",
         )
-        .bind(session_id)
-        .bind(kind)
-        .bind(payload.to_string())
-        .bind(now)
+        .bind(project.as_str())
+        .bind(exercise_id)
+        .bind(version)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db)?
+        .as_ref()
+        .map(task_from_row)
+        .transpose()
+    }
+}
+
+#[async_trait]
+impl SessionRepository for SqliteStore {
+    async fn create(&self, s: &LearningSession) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO learning_sessions (id, user_id, project_id, task_id, workspace_path, branch, \
+             base_revision, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(s.id.as_str())
+        .bind(s.user_id.as_str())
+        .bind(s.project_id.as_str())
+        .bind(s.task_id.as_str())
+        .bind(path_str(&s.workspace_path))
+        .bind(&s.branch)
+        .bind(&s.base_revision)
+        .bind(s.status.as_str())
+        .bind(s.started_at)
+        .bind(s.finished_at)
         .execute(&self.pool)
-        .await?
-        .last_insert_rowid();
-        sqlx::query("UPDATE sessions SET updated_at = ? WHERE id = ?")
-            .bind(now)
-            .bind(session_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(id)
+        .await
+        .map_err(db)?;
+        Ok(())
     }
 
-    pub async fn list_events(&self, session_id: &str) -> Result<Vec<Event>> {
-        Ok(
-            sqlx::query_as("SELECT * FROM events WHERE session_id = ? ORDER BY id")
-                .bind(session_id)
-                .fetch_all(&self.pool)
-                .await?,
-        )
-    }
-
-    pub async fn count_events(&self, session_id: &str, kinds: &[&str]) -> Result<u32> {
-        let mut total = 0u32;
-        for kind in kinds {
-            let (n,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = ?")
-                    .bind(session_id)
-                    .bind(kind)
-                    .fetch_one(&self.pool)
-                    .await?;
-            total += u32::try_from(n).unwrap_or(u32::MAX);
+    async fn update(&self, s: &LearningSession) -> AppResult<()> {
+        let res =
+            sqlx::query("UPDATE learning_sessions SET status = ?, finished_at = ? WHERE id = ?")
+                .bind(s.status.as_str())
+                .bind(s.finished_at)
+                .bind(s.id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(db)?;
+        if res.rows_affected() == 0 {
+            return Err(AppError::NotFound("session".into()));
         }
-        Ok(total)
+        Ok(())
+    }
+
+    async fn get(&self, id: &SessionId) -> AppResult<Option<LearningSession>> {
+        sqlx::query("SELECT * FROM learning_sessions WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(session_from_row)
+            .transpose()
+    }
+
+    async fn list(&self, user: &UserId) -> AppResult<Vec<LearningSession>> {
+        sqlx::query("SELECT * FROM learning_sessions WHERE user_id = ? ORDER BY started_at DESC")
+            .bind(user.as_str())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db)?
+            .iter()
+            .map(session_from_row)
+            .collect()
+    }
+
+    async fn active_for_task(&self, task: &TaskId) -> AppResult<Option<LearningSession>> {
+        sqlx::query("SELECT * FROM learning_sessions WHERE task_id = ? AND status = 'active'")
+            .bind(task.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)?
+            .as_ref()
+            .map(session_from_row)
+            .transpose()
+    }
+
+    async fn find_by_workspace(&self, path: &Path) -> AppResult<Option<LearningSession>> {
+        // Exact match, or `path` lies inside the workspace directory.
+        sqlx::query(
+            "SELECT * FROM learning_sessions \
+             WHERE workspace_path = ?1 OR substr(?1, 1, length(workspace_path) + 1) = workspace_path || '/' \
+             ORDER BY status = 'active' DESC, started_at DESC LIMIT 1",
+        )
+        .bind(path_str(path))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db)?
+        .as_ref()
+        .map(session_from_row)
+        .transpose()
+    }
+}
+
+#[async_trait]
+impl EventLog for SqliteStore {
+    async fn append(&self, e: &DomainEvent) -> AppResult<i64> {
+        Ok(sqlx::query(
+            "INSERT INTO session_events (kind, session_id, project_id, task_id, payload, at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&e.kind)
+        .bind(e.session_id.as_ref().map(SessionId::as_str))
+        .bind(e.project_id.as_ref().map(ProjectId::as_str))
+        .bind(e.task_id.as_ref().map(TaskId::as_str))
+        .bind(e.payload.to_string())
+        .bind(e.at)
+        .execute(&self.pool)
+        .await
+        .map_err(db)?
+        .last_insert_rowid())
+    }
+
+    async fn for_session(
+        &self,
+        session: &SessionId,
+        kind: Option<&str>,
+    ) -> AppResult<Vec<StoredEvent>> {
+        let rows = sqlx::query(
+            "SELECT * FROM session_events WHERE session_id = ?1 AND (?2 IS NULL OR kind = ?2) ORDER BY id",
+        )
+        .bind(session.as_str())
+        .bind(kind)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?;
+        rows.iter()
+            .map(|r| {
+                Ok(StoredEvent {
+                    id: r.get("id"),
+                    event: DomainEvent {
+                        kind: r.get("kind"),
+                        session_id: r
+                            .get::<Option<String>, _>("session_id")
+                            .map(SessionId::from),
+                        project_id: r
+                            .get::<Option<String>, _>("project_id")
+                            .map(ProjectId::from),
+                        task_id: r.get::<Option<String>, _>("task_id").map(TaskId::from),
+                        payload: from_json("event payload", r.get("payload"))?,
+                        at: r.get::<Timestamp, _>("at"),
+                    },
+                })
+            })
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use est_domain::{Difficulty, HelpLevel, MentorSettings, TaskType};
+    use serde_json::json;
 
-    async fn seeded() -> (Store, User, Project, ExerciseRecord) {
-        let store = Store::in_memory().await.unwrap();
-        let user = store.ensure_local_user().await.unwrap();
-        let project = store
-            .insert_project(NewProject {
+    async fn seeded() -> (SqliteStore, Project, Task, User) {
+        let s = SqliteStore::in_memory().await.unwrap();
+        let user = s.local_user().await.unwrap();
+        let p = ProjectRepository::create(
+            &s,
+            NewProject {
                 name: "ranges".into(),
-                description: None,
-                repository_url: "https://github.com/example/ranges".into(),
-                license: Some("MIT".into()),
-                language: Some("rust".into()),
-                default_branch: Some("main".into()),
-                head_revision: "a".repeat(40),
+                repository_url: Some("https://example.invalid/ranges".into()),
                 local_path: "/tmp/ranges".into(),
-            })
-            .await
-            .unwrap();
-        let ex = store
-            .upsert_exercise(NewExercise {
-                id: "fix-off-by-one",
-                version: "1.0.0",
-                title: "Fix off-by-one",
-                category: "bug-fix",
-                difficulty: "beginner",
-                repository: &project.repository_url,
-                revision: &"a".repeat(40),
-                manifest_toml: "manifest_version = 1",
-            })
-            .await
-            .unwrap();
-        (store, user, project, ex)
+                languages: vec![
+                    LanguageDetection {
+                        language: "rust".into(),
+                        files: 3,
+                        build_systems: vec!["cargo".into()],
+                    },
+                    LanguageDetection {
+                        language: "python".into(),
+                        files: 1,
+                        build_systems: vec![],
+                    },
+                ],
+                license: Some("MIT".into()),
+            },
+        )
+        .await
+        .unwrap();
+        let t = TaskRepository::create(
+            &s,
+            NewTask {
+                project_id: p.id.clone(),
+                title: "Fix range".into(),
+                description: String::new(),
+                task_type: TaskType::BugFix,
+                difficulty: Difficulty::Beginner,
+                source: TaskSource::Exercise {
+                    id: "fix-range".into(),
+                    version: "1.0.0".into(),
+                },
+                learning_goals: vec!["goal".into()],
+                skills: vec![est_domain::Skill::Debugging],
+                base_revision: None,
+                test_command: Some("cargo test".into()),
+                mentor: Some(MentorSettings {
+                    max_help_level: HelpLevel::ConceptualHints,
+                    ..Default::default()
+                }),
+                docs: vec![],
+            },
+        )
+        .await
+        .unwrap();
+        (s, p, t, user)
+    }
+
+    fn session(user: &User, p: &Project, t: &Task, ws: &str) -> LearningSession {
+        LearningSession {
+            id: SessionId::generate(),
+            user_id: user.id.clone(),
+            project_id: p.id.clone(),
+            task_id: t.id.clone(),
+            workspace_path: ws.into(),
+            branch: "est/x".into(),
+            base_revision: "a".repeat(40),
+            status: SessionStatus::Active,
+            started_at: est_core::now(),
+            finished_at: None,
+        }
     }
 
     #[tokio::test]
-    async fn local_user_is_singleton() {
-        let store = Store::in_memory().await.unwrap();
-        let a = store.ensure_local_user().await.unwrap();
-        let b = store.ensure_local_user().await.unwrap();
-        assert_eq!(a.id, b.id);
-        assert!(a.is_local);
-    }
-
-    #[tokio::test]
-    async fn project_urls_are_unique() {
-        let (store, _, p, _) = seeded().await;
-        let dup = store
-            .insert_project(NewProject {
-                name: "x".into(),
-                description: None,
-                repository_url: p.repository_url.clone(),
-                license: None,
-                language: None,
-                default_branch: None,
-                head_revision: "b".repeat(40),
-                local_path: "/tmp/x".into(),
-            })
-            .await;
-        assert!(matches!(dup, Err(StorageError::Conflict(_))));
+    async fn projects_roundtrip() {
+        let (s, p, _, user) = seeded().await;
+        assert_eq!(p.primary_language.as_deref(), Some("rust"));
+        assert_eq!(p.languages.len(), 2);
         assert_eq!(
-            store
-                .find_project_by_url(&p.repository_url)
+            s.find_by_path(Path::new("/tmp/ranges"))
                 .await
                 .unwrap()
                 .unwrap()
                 .id,
             p.id
         );
+        assert!(
+            s.find_by_url("https://example.invalid/ranges")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(s.local_user().await.unwrap().id, user.id);
     }
 
     #[tokio::test]
-    async fn exercise_upsert_updates_version() {
-        let (store, _, _, ex) = seeded().await;
-        let rev = "a".repeat(40);
-        let updated = store
-            .upsert_exercise(NewExercise {
-                id: &ex.id,
-                version: "1.1.0",
-                title: &ex.title,
-                category: &ex.category,
-                difficulty: &ex.difficulty,
-                repository: &ex.repository,
-                revision: &rev,
-                manifest_toml: &ex.manifest_toml,
-            })
-            .await
-            .unwrap();
-        assert_eq!(updated.version, "1.1.0");
-        assert_eq!(updated.created_at, ex.created_at);
-        assert_eq!(store.list_exercises().await.unwrap().len(), 1);
+    async fn tasks_roundtrip() {
+        let (s, p, t, _) = seeded().await;
+        assert_eq!(t.status, TaskStatus::Open);
+        assert_eq!(t.mentor.max_help_level, HelpLevel::ConceptualHints);
+        assert!(
+            s.find_exercise(&p.id, "fix-range", "1.0.0")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            s.find_exercise(&p.id, "fix-range", "2.0.0")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        s.set_status(&t.id, TaskStatus::InProgress).await.unwrap();
+        assert_eq!(
+            TaskRepository::get(&s, &t.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            TaskStatus::InProgress
+        );
+        assert_eq!(
+            TaskRepository::list(&s, Some(&p.id)).await.unwrap().len(),
+            1
+        );
     }
 
     #[tokio::test]
     async fn sessions_and_events() {
-        let (store, user, project, ex) = seeded().await;
-        let sid = new_id();
-        let s = store
-            .create_session(NewSession {
-                id: &sid,
-                user_id: &user.id,
-                exercise_id: &ex.id,
-                project_id: &project.id,
-                workspace_path: "/tmp/ws",
-                branch: "est/fix-off-by-one",
-                base_revision: &"a".repeat(40),
-            })
-            .await
-            .unwrap();
-        assert_eq!(s.status, "active");
-
-        store
-            .record_event(&sid, "mentor.hint", &serde_json::json!({"level": 2}))
-            .await
-            .unwrap();
-        store
-            .record_event(&sid, "git.commit", &serde_json::json!({"hash": "x"}))
-            .await
-            .unwrap();
-        store
-            .record_event(&sid, "git.commit", &serde_json::json!({"hash": "y"}))
-            .await
-            .unwrap();
-
-        let events = store.list_events(&sid).await.unwrap();
-        assert_eq!(events.len(), 3);
-        assert_eq!(events[0].payload["level"], 2);
-        assert_eq!(store.count_events(&sid, &["git.commit"]).await.unwrap(), 2);
-        assert_eq!(
-            store
-                .count_events(&sid, &["git.commit", "mentor.hint"])
+        let (s, p, t, user) = seeded().await;
+        let mut a = session(&user, &p, &t, "/ws/p/t");
+        SessionRepository::create(&s, &a).await.unwrap();
+        // Only one active session per task.
+        assert!(
+            SessionRepository::create(&s, &session(&user, &p, &t, "/ws/p/t2"))
                 .await
-                .unwrap(),
-            3
+                .is_err()
         );
 
-        let done = store
-            .set_session_status(&sid, SessionStatus::Completed)
+        assert_eq!(s.active_for_task(&t.id).await.unwrap().unwrap().id, a.id);
+        assert_eq!(
+            s.find_by_workspace(Path::new("/ws/p/t/src/lib.rs"))
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            a.id
+        );
+        assert!(
+            s.find_by_workspace(Path::new("/ws/p/t-other"))
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        a.finish(est_domain::SessionOutcome::Completed, est_core::now())
+            .unwrap();
+        s.update(&a).await.unwrap();
+        assert!(s.active_for_task(&t.id).await.unwrap().is_none());
+
+        s.append(&DomainEvent::new("mentor.request", json!({"level": 2})).session(&a.id))
             .await
             .unwrap();
-        assert_eq!(done.status, "completed");
-        assert_eq!(store.list_sessions(&user.id).await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn events_require_existing_session() {
-        let store = Store::in_memory().await.unwrap();
-        assert!(store
-            .record_event("nope", "x", &serde_json::json!({}))
+        s.append(&DomainEvent::new("session.finished", json!({})).session(&a.id))
             .await
-            .is_err());
+            .unwrap();
+        s.append(&DomainEvent::new("project.added", json!({})).project(&p.id))
+            .await
+            .unwrap();
+        assert_eq!(s.for_session(&a.id, None).await.unwrap().len(), 2);
+        let m = s.for_session(&a.id, Some("mentor.request")).await.unwrap();
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].event.payload["level"], 2);
     }
 }

@@ -1,0 +1,169 @@
+//! Ports: what the application needs from the outside world.
+//!
+//! Repository ports are async; Git, filesystem and editor ports are
+//! synchronous and are called from blocking worker threads by the services.
+
+use std::path::{Path, PathBuf};
+
+use async_trait::async_trait;
+use est_core::{DomainEvent, ProjectId, SessionId, TaskId, UserId};
+use est_domain::{
+    CommandSpec, LanguageDetection, LearningSession, NewProject, NewTask, Project, Task, TaskStatus,
+};
+use serde::Serialize;
+
+use crate::AppResult;
+
+// ---- persistence ---------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct User {
+    pub id: UserId,
+    pub display_name: String,
+}
+
+#[async_trait]
+pub trait UserRepository: Send + Sync {
+    /// The implicit local user; created on first call.
+    async fn local_user(&self) -> AppResult<User>;
+}
+
+#[async_trait]
+pub trait ProjectRepository: Send + Sync {
+    async fn create(&self, project: NewProject) -> AppResult<Project>;
+    async fn get(&self, id: &ProjectId) -> AppResult<Option<Project>>;
+    async fn find_by_path(&self, path: &Path) -> AppResult<Option<Project>>;
+    async fn find_by_url(&self, url: &str) -> AppResult<Option<Project>>;
+    async fn list(&self) -> AppResult<Vec<Project>>;
+}
+
+#[async_trait]
+pub trait TaskRepository: Send + Sync {
+    async fn create(&self, task: NewTask) -> AppResult<Task>;
+    async fn get(&self, id: &TaskId) -> AppResult<Option<Task>>;
+    async fn list(&self, project: Option<&ProjectId>) -> AppResult<Vec<Task>>;
+    async fn set_status(&self, id: &TaskId, status: TaskStatus) -> AppResult<()>;
+    /// Task imported from exercise `exercise_id` at `version` into `project`.
+    async fn find_exercise(
+        &self,
+        project: &ProjectId,
+        exercise_id: &str,
+        version: &str,
+    ) -> AppResult<Option<Task>>;
+}
+
+#[async_trait]
+pub trait SessionRepository: Send + Sync {
+    async fn create(&self, session: &LearningSession) -> AppResult<()>;
+    async fn update(&self, session: &LearningSession) -> AppResult<()>;
+    async fn get(&self, id: &SessionId) -> AppResult<Option<LearningSession>>;
+    async fn list(&self, user: &UserId) -> AppResult<Vec<LearningSession>>;
+    async fn active_for_task(&self, task: &TaskId) -> AppResult<Option<LearningSession>>;
+    /// The session whose workspace contains `path` (used by the CLI).
+    async fn find_by_workspace(&self, path: &Path) -> AppResult<Option<LearningSession>>;
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StoredEvent {
+    pub id: i64,
+    #[serde(flatten)]
+    pub event: DomainEvent,
+}
+
+#[async_trait]
+pub trait EventLog: Send + Sync {
+    async fn append(&self, event: &DomainEvent) -> AppResult<i64>;
+    async fn for_session(
+        &self,
+        session: &SessionId,
+        kind: Option<&str>,
+    ) -> AppResult<Vec<StoredEvent>>;
+}
+
+/// Pushes events to live clients (WebSocket). Best effort.
+pub trait EventPublisher: Send + Sync {
+    fn publish(&self, event: &DomainEvent);
+}
+
+pub struct NoopPublisher;
+
+impl EventPublisher for NoopPublisher {
+    fn publish(&self, _: &DomainEvent) {}
+}
+
+// ---- git -----------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FileStatus {
+    pub code: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CommitSummary {
+    pub hash: String,
+    pub author: String,
+    pub date: String,
+    pub subject: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SourceMatch {
+    pub path: String,
+    pub line: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffTarget<'a> {
+    /// Unstaged changes.
+    Worktree,
+    /// Staged changes.
+    Staged,
+    /// Everything since the given commit, including uncommitted changes.
+    Since(&'a str),
+}
+
+pub trait GitPort: Send + Sync {
+    fn is_repository(&self, path: &Path) -> bool;
+    /// Clones a remote repository (subject to the URL policy).
+    fn clone_remote(&self, url: &str, dest: &Path) -> AppResult<()>;
+    /// Clones a local repository EST already knows into a workspace.
+    fn clone_local(&self, source: &Path, dest: &Path) -> AppResult<()>;
+    fn remote_url(&self, repo: &Path) -> AppResult<Option<String>>;
+    fn resolve(&self, repo: &Path, rev: &str) -> AppResult<Option<String>>;
+    fn fetch(&self, repo: &Path) -> AppResult<()>;
+    fn create_branch(&self, repo: &Path, name: &str, start: &str) -> AppResult<()>;
+    fn current_branch(&self, repo: &Path) -> AppResult<Option<String>>;
+    fn status(&self, repo: &Path) -> AppResult<Vec<FileStatus>>;
+    fn diff(&self, repo: &Path, target: DiffTarget<'_>) -> AppResult<String>;
+    fn log(&self, repo: &Path, since: Option<&str>, limit: usize) -> AppResult<Vec<CommitSummary>>;
+    fn tracked_files(&self, repo: &Path) -> AppResult<Vec<String>>;
+    fn grep(&self, repo: &Path, needle: &str, max: usize) -> AppResult<Vec<SourceMatch>>;
+}
+
+// ---- projects, languages, workspaces, editor ------------------------------
+
+#[derive(Debug, Clone, Default)]
+pub struct ProjectInspection {
+    pub languages: Vec<LanguageDetection>,
+    pub license: Option<String>,
+}
+
+pub trait ProjectInspector: Send + Sync {
+    fn inspect(&self, root: &Path, tracked_files: &[String]) -> ProjectInspection;
+    /// Build / test / check commands the language adapters suggest.
+    fn commands(&self, root: &Path, tracked_files: &[String]) -> Vec<CommandSpec>;
+}
+
+pub trait WorkspaceLayout: Send + Sync {
+    /// Directory for a task's workspace, e.g. `~/.est/workspaces/<project>/<task>`.
+    fn workspace_for(&self, project: &Project, task: &Task) -> PathBuf;
+    /// Directory for a clone of a remote project.
+    fn project_cache(&self, project_name: &str) -> PathBuf;
+}
+
+pub trait IdeLauncher: Send + Sync {
+    /// Opens `path` in the learner's editor. Returns the command used.
+    fn open(&self, path: &Path) -> AppResult<String>;
+}

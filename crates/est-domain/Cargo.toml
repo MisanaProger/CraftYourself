@@ -1,0 +1,11 @@
+[package]
+name = "est-domain"
+description = "Domain models and rules of Engineering Skills Trainer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+est-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true

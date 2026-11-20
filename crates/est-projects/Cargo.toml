@@ -1,0 +1,16 @@
+[package]
+name = "est-projects"
+description = "Project inspection: languages and license"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+est-application.workspace = true
+est-domain.workspace = true
+est-languages.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

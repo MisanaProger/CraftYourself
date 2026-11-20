@@ -1,0 +1,13 @@
+[package]
+name = "est-ai-policy"
+description = "AI Policy Engine: tool permissions, help levels, documentation boundary, response limits"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+est-domain.workspace = true
+globset.workspace = true
+regex.workspace = true
+serde.workspace = true
+thiserror.workspace = true

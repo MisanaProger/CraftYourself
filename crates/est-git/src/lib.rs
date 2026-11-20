@@ -54,10 +54,11 @@ impl UrlPolicy {
         }
         // scp-like ssh syntax: git@github.com:owner/repo.git
         if !url.contains("://") {
-            if let Some((user_host, _path)) = url.split_once(':') {
-                if user_host.contains('@') && !user_host.contains('/') {
-                    return Ok(());
-                }
+            if let Some((user_host, _path)) = url.split_once(':')
+                && user_host.contains('@')
+                && !user_host.contains('/')
+            {
+                return Ok(());
             }
             let local_path =
                 url.starts_with('/') || url.starts_with("./") || url.starts_with("../");
@@ -345,12 +346,18 @@ impl Repo {
         self.stdout(&["diff", "--no-color", "--no-ext-diff", &range], "diff")
     }
 
-    pub fn log(&self, limit: usize) -> Result<Vec<CommitInfo>> {
+    /// Commits reachable from HEAD, newest first. With `since`, only commits
+    /// after that revision (`since..HEAD`).
+    pub fn log(&self, since: Option<&str>, limit: usize) -> Result<Vec<CommitInfo>> {
         let n = format!("-n{}", limit.max(1));
-        let out = self.stdout(
-            &["log", &n, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e"],
-            "log",
-        )?;
+        let range;
+        let mut args = vec!["log", &n, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e"];
+        if let Some(base) = since {
+            validate_ref(base)?;
+            range = format!("{base}..HEAD");
+            args.push(&range);
+        }
+        let out = self.stdout(&args, "log")?;
         out.split('\x1e')
             .map(str::trim)
             .filter(|r| !r.is_empty())
@@ -368,6 +375,27 @@ impl Repo {
                 })
             })
             .collect()
+    }
+
+    /// Diff of the working tree (committed and uncommitted changes) against `rev`.
+    pub fn diff_against(&self, rev: &str) -> Result<String> {
+        validate_ref(rev)?;
+        self.stdout(&["diff", "--no-color", "--no-ext-diff", rev, "--"], "diff")
+    }
+
+    /// URL of the `origin` remote, if any.
+    pub fn remote_url(&self) -> Result<Option<String>> {
+        let out = self.git(["remote", "get-url", "origin"]).output()?;
+        Ok(out
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+            .filter(|s| !s.is_empty()))
+    }
+
+    /// Whether `path` is the root of a Git working tree.
+    pub fn is_repository(path: &Path) -> bool {
+        path.join(".git").exists()
     }
 
     pub fn status(&self) -> Result<Vec<StatusEntry>> {
@@ -421,7 +449,7 @@ impl Repo {
                     command: "grep".into(),
                     code,
                     stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-                })
+                });
             }
         }
         let text = String::from_utf8_lossy(&output.stdout);
@@ -531,10 +559,11 @@ mod tests {
             code: "??".into(),
             path: "new.rs".into()
         }));
-        assert!(work
-            .diff(false)
-            .unwrap()
-            .contains("+pub fn parse_range() { todo!() }"));
+        assert!(
+            work.diff(false)
+                .unwrap()
+                .contains("+pub fn parse_range() { todo!() }")
+        );
 
         work.add(&["lib.rs".into(), "new.rs".into()]).unwrap();
         assert!(work.diff(true).unwrap().contains("new.rs"));
@@ -544,13 +573,34 @@ mod tests {
         assert_eq!(work.resolve("HEAD").unwrap(), head);
         assert!(work.status().unwrap().is_empty());
 
-        let log = work.log(10).unwrap();
+        let log = work.log(None, 10).unwrap();
         assert_eq!(log.len(), 2);
         assert_eq!(log[0].subject, "Make parse_range explicit");
         assert_eq!(log[1].hash, base);
 
         assert!(work.diff_range(&base, "HEAD").unwrap().contains("new.rs"));
+        assert_eq!(work.log(Some(&base), 10).unwrap().len(), 1);
+        std::fs::write(work.root().join("lib.rs"), "changed\n").unwrap();
+        let since_base = work.diff_against(&base).unwrap();
+        assert!(since_base.contains("new.rs") && since_base.contains("+changed"));
+        assert_eq!(
+            work.remote_url().unwrap().as_deref(),
+            origin.root().to_str()
+        );
+        assert_eq!(origin.remote_url().unwrap(), None);
+        assert!(Repo::is_repository(work.root()));
         assert_eq!(work.ls_files().unwrap(), vec!["lib.rs", "new.rs"]);
+        std::process::Command::new("git")
+            .args([
+                "-C",
+                work.root().to_str().unwrap(),
+                "checkout",
+                "-q",
+                "--",
+                "lib.rs",
+            ])
+            .status()
+            .unwrap();
 
         let hits = work.grep("fn parse_range", 10).unwrap();
         assert_eq!(hits.len(), 1);
@@ -568,3 +618,5 @@ mod tests {
         ));
     }
 }
+
+pub mod port;

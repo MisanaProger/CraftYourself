@@ -1,10 +1,12 @@
 [package]
 name = "est-core"
-description = "Shared domain types of Engineering Skills Trainer"
+description = "Shared primitives of Engineering Skills Trainer: identifiers, events, errors"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono.workspace = true
 serde.workspace = true
-thiserror.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
