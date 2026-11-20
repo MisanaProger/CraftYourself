@@ -14,6 +14,7 @@ pub mod learning;
 pub mod ports;
 pub mod problems;
 pub mod recommendations;
+pub mod remote;
 pub mod sandbox;
 mod service;
 pub mod skills;
@@ -26,6 +27,10 @@ pub use generation::{GenerateProgram, GeneratedProgramSummary};
 pub use knowledge::KnowledgeProfileView;
 pub use problems::{ImportProblem, ProblemSummary};
 pub use recommendations::RecommendRequest;
+pub use remote::{
+    ConfirmPublish, DraftComment, FetchProblem, ImportIssue, IssuePreview, IssueRequest,
+    PublishPreview, Published,
+};
 pub use sandbox::RunRequest;
 pub use service::{
     AddProject, App, AppSettings, Ports, SessionOverview, StartedSession, name_from_source,

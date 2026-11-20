@@ -43,12 +43,16 @@ pub struct Ports {
     pub recommendations: Arc<dyn RecommendationRepository>,
     pub summaries: Arc<dyn SessionSummaryRepository>,
     pub lesson_results: Arc<dyn LessonResultRepository>,
+    /// Code forges and online judges.
+    pub remote: Arc<dyn RemoteSources>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AppSettings {
     /// ADI double-decay parameters (preliminary MVP values by default).
     pub adi_decay: DecayParams,
+    /// Self-hosted GitLab instances Issues may come from.
+    pub gitlab_hosts: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -56,6 +60,8 @@ pub struct App {
     pub(crate) ports: Ports,
     pub(crate) settings: AppSettings,
     pub(crate) user: User,
+    /// Publications waiting for the learner's confirmation.
+    pub(crate) drafts: crate::remote::PendingDrafts,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -119,6 +125,7 @@ impl App {
             ports,
             settings,
             user,
+            drafts: Default::default(),
         })
     }
 

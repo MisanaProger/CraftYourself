@@ -16,6 +16,7 @@ mod llm;
 mod problems;
 mod projects;
 mod recommendations;
+mod remote;
 mod sessions;
 mod tasks;
 
@@ -126,6 +127,15 @@ pub fn api() -> Router<Runtime> {
             get(learning::artifact_file),
         )
         .route("/problems", get(problems::list).post(problems::import))
+        .route("/problems/fetch", post(remote::fetch_problem))
+        .route("/issues/preview", post(remote::preview_issue))
+        .route("/issues/import", post(remote::import_issue))
+        .route("/tasks/{id}/issue/comments", post(remote::draft_comment))
+        .route(
+            "/publish/drafts/{id}",
+            axum::routing::delete(remote::discard),
+        )
+        .route("/publish/drafts/{id}/confirm", post(remote::confirm))
         .route(
             "/recommendations",
             get(recommendations::latest).post(recommendations::generate),

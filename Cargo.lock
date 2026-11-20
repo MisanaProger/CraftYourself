@@ -505,8 +505,11 @@ dependencies = [
  "est-dependency",
  "est-domain",
  "est-git",
+ "est-issues",
  "est-learning",
+ "est-problems",
  "est-projects",
+ "est-remote",
  "est-sandbox",
  "est-storage",
  "est-workspace",
@@ -528,6 +531,7 @@ name = "est-application"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "est-ai-policy",
  "est-core",
  "est-dependency",
