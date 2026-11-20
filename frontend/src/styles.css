@@ -457,6 +457,15 @@ pre.output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 
 .preset:hover { border-color: var(--accent); }
 .preset.on { border-color: var(--accent); background: var(--accent-soft); }
 
+/* Generated programs */
+.generate { display: flex; flex-direction: column; gap: 0.6rem; margin: 0; min-height: 210px; grid-column: span 2; }
+.generate h3 { margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 1.1rem; }
+.generate p { margin: 0; }
+.generate .row label { gap: 0.4rem; }
+.narrow-input { width: 4.5rem; }
+.tile.failed { border-color: var(--warn); }
+@media (max-width: 720px) { .generate { grid-column: auto; } }
+
 /* LaTeX and HTML pages from the model */
 .math-display { display: block; overflow-x: auto; overflow-y: hidden; margin: 0.6rem 0; }
 .math-src { white-space: pre-wrap; }

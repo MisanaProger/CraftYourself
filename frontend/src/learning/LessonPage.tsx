@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useTheme } from "../app/theme";
 import { Markdown } from "../chat/Markdown";
 import { useT } from "../i18n";
-import { api } from "../services/api";
+import { api, pages } from "../services/api";
 import type { LessonBody, LessonView, QuizResult } from "../types/api";
 import { ErrorBox, tv } from "../ui";
 import { IsolatedFrame, type FrameProgress } from "../ui/IsolatedFrame";
@@ -142,6 +142,40 @@ function Artifact({ lesson }: { lesson: Of<"artifact"> }) {
   );
 }
 
+/** An HTML5 page of a generated program: it may report progress, or the learner marks it done. */
+function Page({ lesson }: { lesson: Of<"page"> }) {
+  const { t } = useT();
+  const { theme } = useTheme();
+  const refresh = useRefreshLearning();
+  const [saved, setSaved] = useState<number | null>(null);
+  const progress = useMutation({
+    mutationFn: ({ score, completed }: FrameProgress) => api.artifactProgress(lesson.program_id, lesson.id, score, completed),
+    onSuccess: (p) => {
+      setSaved(p.score);
+      refresh();
+    },
+  });
+  const done = useMutation({ mutationFn: () => api.completeLesson(lesson.program_id, lesson.id), onSuccess: refresh });
+  return (
+    <>
+      <IsolatedFrame src={pages.lesson(lesson.program_id, lesson.id, theme)} title={lesson.title} initialHeight={560} onProgress={progress.mutate} />
+      <p className="muted small">
+        {t("learning.pageNote")} {saved != null && <span className="ok">{t("learning.saved", { score: saved })}</span>}
+      </p>
+      <div className="row">
+        {lesson.status === "completed" ? (
+          <span className="ok">{t("learning.done")}</span>
+        ) : (
+          <button className="primary" onClick={() => done.mutate()} disabled={done.isPending}>
+            {t("learning.markDone")}
+          </button>
+        )}
+      </div>
+      <ErrorBox error={progress.error ?? done.error} />
+    </>
+  );
+}
+
 function Practice({ lesson }: { lesson: Of<"practice"> }) {
   const { t } = useT();
   const navigate = useNavigate();
@@ -208,6 +242,7 @@ export function LessonPage() {
       {l.body.kind === "quiz" && <Quiz key={l.id} lesson={l as Of<"quiz">} />}
       {l.body.kind === "artifact" && <Artifact lesson={l as Of<"artifact">} />}
       {l.body.kind === "practice" && <Practice lesson={l as Of<"practice">} />}
+      {l.body.kind === "page" && <Page key={l.id} lesson={l as Of<"page">} />}
       <nav className="lesson-nav">
         {l.previous ? <Link to={`/learning/${program}/${l.previous}`}>← {t("learning.previous")}</Link> : <span />}
         {l.next ? (

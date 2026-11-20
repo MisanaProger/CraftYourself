@@ -21,6 +21,7 @@ export function useLiveEvents() {
           qc.invalidateQueries({ queryKey: ["sessions"] });
         }
         if (e.kind.startsWith("adi.")) qc.invalidateQueries({ queryKey: ["adi"] });
+        if (e.kind.startsWith("learning.program.")) qc.invalidateQueries({ queryKey: ["generated"] });
         if (e.conversation_id) {
           qc.invalidateQueries({ queryKey: ["conversation", e.conversation_id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
