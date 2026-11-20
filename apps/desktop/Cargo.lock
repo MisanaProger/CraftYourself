@@ -1229,6 +1229,7 @@ dependencies = [
  "est-domain",
  "est-exercises",
  "est-learning",
+ "est-problems",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1321,6 +1322,15 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.8.2",
+]
+
+[[package]]
+name = "est-problems"
+version = "0.1.0"
+dependencies = [
+ "est-domain",
+ "serde",
+ "url",
 ]
 
 [[package]]

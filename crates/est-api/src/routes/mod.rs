@@ -12,6 +12,7 @@ mod conversations;
 mod isolated;
 mod learning;
 mod llm;
+mod problems;
 mod projects;
 mod sessions;
 mod tasks;
@@ -120,6 +121,7 @@ pub fn api() -> Router<Runtime> {
             "/learning/artifacts/{id}/{*path}",
             get(learning::artifact_file),
         )
+        .route("/problems", get(problems::list).post(problems::import))
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))
         .route("/analytics/disciplines", get(analytics::disciplines))

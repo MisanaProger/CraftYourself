@@ -535,6 +535,7 @@ dependencies = [
  "est-domain",
  "est-exercises",
  "est-learning",
+ "est-problems",
  "serde",
  "serde_json",
  "thiserror",

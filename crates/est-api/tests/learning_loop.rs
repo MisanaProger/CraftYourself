@@ -1284,3 +1284,115 @@ async fn mentor_html_pages_from_l2() {
         .clone();
     assert!(system.contains("```html"));
 }
+
+fn watermelon(language: &str) -> Value {
+    json!({
+        "url": "https://codeforces.com/contest/4/problem/a",
+        "statement": "Watermelon. Pete and Billy bought a watermelon of weight $$$w$$$ ($$$1 \\le w \\le 100$$$). \
+                      Can they divide it into two parts, each weighing an even number of kilos?",
+        "samples": [{ "input": "8\n", "output": "YES\n" }],
+        "tags": ["math", "brute force"],
+        "rating": 800,
+        "language": language,
+        "lang": "en"
+    })
+}
+
+#[tokio::test]
+async fn problem_analysis() {
+    let h = harness().await;
+    let (s, e) = h.post("/api/v1/problems", watermelon("java")).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+    let mut bad = watermelon("python");
+    bad["url"] = json!("https://codeforces.com/blog/entry/1");
+    assert_eq!(
+        h.post("/api/v1/problems", bad).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let (s, started) = h.post("/api/v1/problems", watermelon("python")).await;
+    assert_eq!(s, StatusCode::CREATED, "{started}");
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    let statement = std::fs::read_to_string(ws.join("PROBLEM.md")).unwrap();
+    assert!(statement.starts_with("# Codeforces 4A · Watermelon"));
+    assert!(
+        statement.contains("weight $w$ ($1 \\le w \\le 100$)"),
+        "{statement}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(ws.join("samples/01.out")).unwrap(),
+        "YES\n"
+    );
+    assert!(ws.join("main.py").is_file() && ws.join("run_samples.sh").is_file());
+
+    let tid = started["task_id"].as_str().unwrap();
+    let (_, task) = h.get(&format!("/api/v1/tasks/{tid}")).await;
+    assert_eq!(task["task_type"], "algorithm");
+    assert_eq!(task["difficulty"], "beginner");
+    assert_eq!(
+        task["source"],
+        json!({ "type": "problem", "platform": "codeforces", "id": "4A",
+                "url": "https://codeforces.com/problemset/problem/4/A" })
+    );
+    assert_eq!(task["test_command"], "sh run_samples.sh");
+    assert_eq!(task["acceptance_criteria"].as_array().unwrap().len(), 4);
+    assert!(
+        task["acceptance_criteria"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("The solution passes")
+    );
+
+    // An ordinary Issue: L0, the mentor gets the problem-analysis stages.
+    let conv = started["conversation_id"].as_str().unwrap();
+    assert_eq!(h.level(conv).await, 0);
+    h.say(conv, "I read the statement and checked w = 2. What next?")
+        .await;
+    let system = h
+        .llm
+        .requests
+        .lock()
+        .unwrap()
+        .last()
+        .unwrap()
+        .system
+        .clone();
+    assert!(
+        system.contains("Режим разбора алгоритмической задачи") && system.contains("Сейчас L0")
+    );
+    assert!(system.contains("Codeforces 4A · Watermelon"));
+
+    // The samples run in the sandbox with the language's image.
+    let sid = started["id"].as_str().unwrap();
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+    {
+        let reqs = h.sandbox.requests.lock().unwrap();
+        assert_eq!(reqs[0].command, "sh run_samples.sh");
+        assert_eq!(reqs[0].language.as_deref(), Some("python"));
+        assert!(!reqs[0].network);
+    }
+
+    // Importing it again resumes the same Issue; another language is another one.
+    let (_, again) = h.post("/api/v1/problems", watermelon("python")).await;
+    assert_eq!(
+        (again["id"].as_str(), again["resumed"].as_bool()),
+        (Some(sid), Some(true))
+    );
+    let (s, cpp) = h.post("/api/v1/problems", watermelon("cpp")).await;
+    assert_eq!(s, StatusCode::CREATED);
+    assert_ne!(cpp["task_id"], started["task_id"]);
+
+    let (_, list) = h.get("/api/v1/problems").await;
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(
+        list.iter()
+            .any(|p| p["conversation_id"] == conv && p["problem_id"] == "4A")
+    );
+}
