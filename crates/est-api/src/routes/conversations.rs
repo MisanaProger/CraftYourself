@@ -1,11 +1,12 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use est_application::{ConversationView, NewConversation, PostMessage};
 use est_core::{ConversationId, EscalationId};
 use est_domain::{Conversation, EngagementState, Message};
 
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::runtime::Runtime;
 
 pub async fn list(State(rt): State<Runtime>) -> ApiResult<Json<Vec<Conversation>>> {
@@ -93,4 +94,23 @@ pub async fn raise(
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<Message>>> {
     Ok(Json(rt.app.raise_level(&ConversationId::from(id)).await?))
+}
+
+/// The `n`-th HTML page of a mentor answer, as an isolated document.
+pub async fn page(
+    State(rt): State<Runtime>,
+    Path((id, message, n)): Path<(String, String, usize)>,
+) -> Response {
+    match rt
+        .app
+        .message_page(
+            &ConversationId::from(id),
+            &est_core::MessageId::from(message),
+            n,
+        )
+        .await
+    {
+        Ok(html) => super::isolated::model_page(html),
+        Err(e) => ApiError(e).into_response(),
+    }
 }

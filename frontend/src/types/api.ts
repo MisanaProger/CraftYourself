@@ -352,7 +352,7 @@ export interface SandboxInfo {
   limits: Record<string, unknown>;
 }
 
-export type LessonKind = "reading" | "quiz" | "artifact" | "practice";
+export type LessonKind = "reading" | "quiz" | "artifact" | "practice" | "page";
 export type LessonStatus = "not_started" | "started" | "completed";
 
 export interface ProgramTile {
@@ -389,7 +389,36 @@ export type LessonBody =
   | { kind: "reading"; markdown: string }
   | { kind: "quiz"; questions: { id: string; text: string; code: string | null; options: string[] }[]; pass_percent: number }
   | { kind: "artifact"; artifact_id: string; entrypoint: string; objectives: string[] }
-  | { kind: "practice"; conversation_id: string | null; session_id: string | null; task_status: TaskStatus | null };
+  | { kind: "practice"; conversation_id: string | null; session_id: string | null; task_status: TaskStatus | null }
+  | { kind: "page" };
+
+export type GenerationLevel = "beginner" | "intermediate" | "advanced";
+export type GenerationStatus = "generating" | "ready" | "failed";
+
+export interface GenerateProgram {
+  topic: string;
+  level: GenerationLevel;
+  lessons: number;
+  lang: string;
+}
+
+export interface GeneratedProgram {
+  id: string;
+  topic: string;
+  lang: string;
+  level: GenerationLevel;
+  status: GenerationStatus;
+  error: string | null;
+  lessons_total: number;
+  lessons_done: number;
+  model: string | null;
+  title: string | null;
+  summary: string | null;
+  minutes: number;
+  completed: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface LessonView extends LessonSummary {
   program_id: string;

@@ -10,8 +10,10 @@ use std::path::PathBuf;
 
 use est_core::{DomainEvent, TaskId};
 use est_domain::TaskStatus;
+use est_learning::generated::GeneratedProgram;
 use est_learning::{
-    LearningError, LessonDef, LessonKind, Program, ProgramStatus, QuestionView, QuizResult, pick,
+    LearningError, LessonDef, LessonKind, Program, ProgramStatus, QuestionView, Quiz, QuizResult,
+    pick,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -90,6 +92,30 @@ pub enum LessonBody {
         session_id: Option<String>,
         task_status: Option<TaskStatus>,
     },
+    /// An HTML5 page of a generated program, served as an isolated document.
+    Page {},
+}
+
+/// A program with its content: bundled, or generated and stored.
+pub(crate) struct Loaded {
+    pub program: Program,
+    generated: Option<GeneratedProgram>,
+}
+
+impl Loaded {
+    fn reading(&self, lesson: &LessonDef, lang: &str) -> AppResult<String> {
+        Ok(match &self.generated {
+            Some(g) => g.markdown(&lesson.id)?,
+            None => est_learning::reading(&self.program, lesson, lang)?,
+        })
+    }
+
+    fn quiz(&self, lesson: &LessonDef) -> AppResult<Quiz> {
+        Ok(match &self.generated {
+            Some(g) => g.quiz(&lesson.id)?,
+            None => est_learning::quiz(&self.program, lesson)?,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,6 +142,19 @@ fn not_started(program: &str, lesson: &str) -> LessonProgress {
 }
 
 impl App {
+    pub(crate) async fn load_program(&self, id: &str) -> AppResult<Loaded> {
+        Ok(match self.ready_generated(id).await? {
+            Some(g) => Loaded {
+                program: g.to_program(),
+                generated: Some(g),
+            },
+            None => Loaded {
+                program: est_learning::program(id)?,
+                generated: None,
+            },
+        })
+    }
+
     async fn progress_map(
         &self,
         program: Option<&str>,
@@ -185,7 +224,7 @@ impl App {
     }
 
     pub async fn learning_program(&self, id: &str, lang: &str) -> AppResult<ProgramView> {
-        let program = est_learning::program(id)?;
+        let program = self.load_program(id).await?.program;
         self.sync_practice_progress(&program).await?;
         let progress = self.progress_map(Some(id)).await?;
         Ok(ProgramView {
@@ -214,17 +253,19 @@ impl App {
         lesson_id: &str,
         lang: &str,
     ) -> AppResult<LessonView> {
-        let program = est_learning::program(program_id)?;
-        self.sync_practice_progress(&program).await?;
-        let lesson = est_learning::lesson(&program, lesson_id)?;
+        let loaded = self.load_program(program_id).await?;
+        let program = &loaded.program;
+        self.sync_practice_progress(program).await?;
+        let lesson = est_learning::lesson(program, lesson_id)?;
         let progress = self.progress_map(Some(program_id)).await?;
         let p = progress.get(&(program.id.clone(), lesson.id.clone()));
         let body = match lesson.kind {
             LessonKind::Reading => LessonBody::Reading {
-                markdown: est_learning::reading(&program, lesson, lang)?,
+                markdown: loaded.reading(lesson, lang)?,
             },
+            LessonKind::Page => LessonBody::Page {},
             LessonKind::Quiz => {
-                let q = est_learning::quiz(&program, lesson)?;
+                let q = loaded.quiz(lesson)?;
                 LessonBody::Quiz {
                     questions: est_learning::quiz_view(&q, lang),
                     pass_percent: q.pass_percent,
@@ -277,7 +318,7 @@ impl App {
             .unwrap_or(0);
         Ok(LessonView {
             program_id: program.id.clone(),
-            summary: self.summary(&program, lesson, lang, p),
+            summary: self.summary(program, lesson, lang, p),
             intro: pick(&lesson.intro, lang),
             body,
             previous: idx
@@ -305,19 +346,31 @@ impl App {
             .unwrap_or_else(|| not_started(program, lesson)))
     }
 
-    fn lesson_of(
+    async fn lesson_of(
+        &self,
         program_id: &str,
         lesson_id: &str,
-        kind: LessonKind,
-    ) -> AppResult<(Program, LessonDef)> {
-        let program = est_learning::program(program_id)?;
-        let lesson = est_learning::lesson(&program, lesson_id)?.clone();
-        if lesson.kind != kind {
+        kinds: &[LessonKind],
+    ) -> AppResult<(Loaded, LessonDef)> {
+        let loaded = self.load_program(program_id).await?;
+        let lesson = est_learning::lesson(&loaded.program, lesson_id)?.clone();
+        if !kinds.contains(&lesson.kind) {
             return Err(AppError::Invalid(
-                format!("lesson `{lesson_id}` is not a {kind:?} lesson").to_lowercase(),
+                format!("lesson `{lesson_id}` is not a {:?} lesson", kinds[0]).to_lowercase(),
             ));
         }
-        Ok((program, lesson))
+        Ok((loaded, lesson))
+    }
+
+    /// HTML of a page lesson, to be served as an isolated document.
+    pub async fn lesson_page(&self, program_id: &str, lesson_id: &str) -> AppResult<String> {
+        let (loaded, lesson) = self
+            .lesson_of(program_id, lesson_id, &[LessonKind::Page])
+            .await?;
+        match &loaded.generated {
+            Some(g) => Ok(g.html(&lesson.id)?),
+            None => Err(AppError::NotFound(format!("page `{lesson_id}`"))),
+        }
     }
 
     pub async fn complete_reading(
@@ -325,7 +378,14 @@ impl App {
         program_id: &str,
         lesson_id: &str,
     ) -> AppResult<LessonProgress> {
-        Self::lesson_of(program_id, lesson_id, LessonKind::Reading)?;
+        // A page counts as read when the learner says so, even if it never
+        // reports progress itself.
+        self.lesson_of(
+            program_id,
+            lesson_id,
+            &[LessonKind::Reading, LessonKind::Page],
+        )
+        .await?;
         let mut p = self.current(program_id, lesson_id).await?;
         p.status = LessonStatus::Completed;
         p.attempts += 1;
@@ -342,8 +402,10 @@ impl App {
         answers: BTreeMap<String, usize>,
         lang: &str,
     ) -> AppResult<QuizResult> {
-        let (program, lesson) = Self::lesson_of(program_id, lesson_id, LessonKind::Quiz)?;
-        let quiz = est_learning::quiz(&program, &lesson)?;
+        let (loaded, lesson) = self
+            .lesson_of(program_id, lesson_id, &[LessonKind::Quiz])
+            .await?;
+        let quiz = loaded.quiz(&lesson)?;
         let result = est_learning::grade(&quiz, &answers, lang);
         let mut p = self.current(program_id, lesson_id).await?;
         p.attempts += 1;
@@ -367,7 +429,12 @@ impl App {
         score: u32,
         completed: bool,
     ) -> AppResult<LessonProgress> {
-        Self::lesson_of(program_id, lesson_id, LessonKind::Artifact)?;
+        self.lesson_of(
+            program_id,
+            lesson_id,
+            &[LessonKind::Artifact, LessonKind::Page],
+        )
+        .await?;
         let mut p = self.current(program_id, lesson_id).await?;
         p.attempts += 1;
         p.score = Some(p.score.unwrap_or(0).max(score.min(100) as u8));
@@ -423,8 +490,10 @@ impl App {
         program_id: &str,
         lesson_id: &str,
     ) -> AppResult<StartedSession> {
-        let (program, lesson) = Self::lesson_of(program_id, lesson_id, LessonKind::Practice)?;
-        let template = est_learning::practice_template(&program, &lesson)?;
+        let (loaded, lesson) = self
+            .lesson_of(program_id, lesson_id, &[LessonKind::Practice])
+            .await?;
+        let template = est_learning::practice_template(&loaded.program, &lesson)?;
         let dir: PathBuf = self
             .ports
             .workspaces

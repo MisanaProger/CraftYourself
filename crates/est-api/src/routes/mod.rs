@@ -9,6 +9,7 @@ use crate::runtime::Runtime;
 
 mod analytics;
 mod conversations;
+mod isolated;
 mod learning;
 mod llm;
 mod projects;
@@ -56,6 +57,10 @@ pub fn api() -> Router<Runtime> {
             get(conversations::messages).post(conversations::post_message),
         )
         .route(
+            "/conversations/{id}/messages/{message}/pages/{n}",
+            get(conversations::page),
+        )
+        .route(
             "/conversations/{id}/engagement",
             get(conversations::engagement),
         )
@@ -78,6 +83,18 @@ pub fn api() -> Router<Runtime> {
             get(sessions::runs).post(sessions::start_run),
         )
         .route("/learning/programs", get(learning::programs))
+        .route(
+            "/learning/generated",
+            get(learning::generated).post(learning::generate),
+        )
+        .route(
+            "/learning/generated/{id}",
+            get(learning::generated_one).delete(learning::delete_generated),
+        )
+        .route(
+            "/learning/programs/{id}/lessons/{lesson}/page",
+            get(learning::page),
+        )
         .route("/learning/programs/{id}", get(learning::program))
         .route(
             "/learning/programs/{id}/lessons/{lesson}",

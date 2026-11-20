@@ -275,8 +275,19 @@ impl App {
             }
         }
         run.finished_at = Some(est_core::now());
+        // The result goes to the chat before the run is marked finished, so
+        // whoever sees a finished run also finds its card in the timeline.
+        // The run is closed even if posting fails.
+        let posted = self.post_run_result(&run).await;
         self.ports.sandbox_runs.update(&run).await?;
+        let ev = posted?;
+        self.emit(ev).await?;
+        Ok(run)
+    }
 
+    /// Adds the run's result to its Issue's conversation; returns the event
+    /// to emit once the run is stored.
+    async fn post_run_result(&self, run: &SandboxRun) -> AppResult<DomainEvent> {
         let session = self.get_session(&run.session_id).await?;
         let mut ev = DomainEvent::new(
             events::RUN_FINISHED,
@@ -315,8 +326,7 @@ impl App {
                 .with_meta(json!({ "notice": "sandbox_run" }));
             self.ports.conversations.append(&msg).await?;
         }
-        self.emit(ev).await?;
-        Ok(run)
+        Ok(ev)
     }
 
     pub async fn runs(&self, session_id: &SessionId) -> AppResult<Vec<SandboxRun>> {

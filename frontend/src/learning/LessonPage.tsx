@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useTheme } from "../app/theme";
 import { Markdown } from "../chat/Markdown";
 import { useT } from "../i18n";
-import { api } from "../services/api";
+import { api, pages } from "../services/api";
 import type { LessonBody, LessonView, QuizResult } from "../types/api";
 import { ErrorBox, tv } from "../ui";
+import { IsolatedFrame, type FrameProgress } from "../ui/IsolatedFrame";
 
 type Of<K extends LessonBody["kind"]> = LessonView & { body: Extract<LessonBody, { kind: K }> };
 
@@ -109,43 +110,19 @@ function Quiz({ lesson }: { lesson: Of<"quiz"> }) {
   );
 }
 
-/**
- * Standalone artifact in a sandboxed iframe: `allow-scripts` without
- * `allow-same-origin` gives it an opaque origin, so it cannot reach this
- * page, its storage or the API. It may only post a progress message, which
- * is validated here before it is forwarded to the server.
- */
+/** Standalone artifact; its progress is validated and forwarded to the server. */
 function Artifact({ lesson }: { lesson: Of<"artifact"> }) {
   const { t, lang } = useT();
   const { theme } = useTheme();
   const refresh = useRefreshLearning();
-  const frame = useRef<HTMLIFrameElement>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  const [height, setHeight] = useState(720);
   const progress = useMutation({
-    mutationFn: ({ score, completed }: { score: number; completed: boolean }) => api.artifactProgress(lesson.program_id, lesson.id, score, completed),
+    mutationFn: ({ score, completed }: FrameProgress) => api.artifactProgress(lesson.program_id, lesson.id, score, completed),
     onSuccess: (p) => {
       setSaved(p.score);
       refresh();
     },
   });
-  const mutate = progress.mutate;
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      if (!frame.current || e.source !== frame.current.contentWindow || e.origin !== "null") return;
-      const d = e.data as { type?: unknown; version?: unknown; score?: unknown; completed?: unknown; height?: unknown } | null;
-      if (!d || d.version !== 1) return;
-      if (d.type === "est:resize") {
-        if (typeof d.height === "number" && Number.isFinite(d.height)) setHeight(Math.max(240, Math.min(3000, Math.round(d.height))));
-        return;
-      }
-      if (d.type !== "est:progress") return;
-      if (typeof d.score !== "number" || !Number.isFinite(d.score) || typeof d.completed !== "boolean") return;
-      mutate({ score: Math.max(0, Math.min(100, Math.round(d.score))), completed: d.completed });
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [mutate]);
   const src = `/api/v1/learning/artifacts/${encodeURIComponent(lesson.body.artifact_id)}/${lesson.body.entrypoint}?lang=${lang}&theme=${theme}`;
   return (
     <>
@@ -156,11 +133,45 @@ function Artifact({ lesson }: { lesson: Of<"artifact"> }) {
           ))}
         </ul>
       )}
-      <iframe ref={frame} className="artifact" style={{ height }} title={lesson.title} src={src} sandbox="allow-scripts" referrerPolicy="no-referrer" />
+      <IsolatedFrame src={src} title={lesson.title} initialHeight={720} onProgress={progress.mutate} />
       <p className="muted small">
         {t("learning.artifactNote")} {saved != null && <span className="ok">{t("learning.saved", { score: saved })}</span>}
       </p>
       <ErrorBox error={progress.error} />
+    </>
+  );
+}
+
+/** An HTML5 page of a generated program: it may report progress, or the learner marks it done. */
+function Page({ lesson }: { lesson: Of<"page"> }) {
+  const { t } = useT();
+  const { theme } = useTheme();
+  const refresh = useRefreshLearning();
+  const [saved, setSaved] = useState<number | null>(null);
+  const progress = useMutation({
+    mutationFn: ({ score, completed }: FrameProgress) => api.artifactProgress(lesson.program_id, lesson.id, score, completed),
+    onSuccess: (p) => {
+      setSaved(p.score);
+      refresh();
+    },
+  });
+  const done = useMutation({ mutationFn: () => api.completeLesson(lesson.program_id, lesson.id), onSuccess: refresh });
+  return (
+    <>
+      <IsolatedFrame src={pages.lesson(lesson.program_id, lesson.id, theme)} title={lesson.title} initialHeight={560} onProgress={progress.mutate} />
+      <p className="muted small">
+        {t("learning.pageNote")} {saved != null && <span className="ok">{t("learning.saved", { score: saved })}</span>}
+      </p>
+      <div className="row">
+        {lesson.status === "completed" ? (
+          <span className="ok">{t("learning.done")}</span>
+        ) : (
+          <button className="primary" onClick={() => done.mutate()} disabled={done.isPending}>
+            {t("learning.markDone")}
+          </button>
+        )}
+      </div>
+      <ErrorBox error={progress.error ?? done.error} />
     </>
   );
 }
@@ -231,6 +242,7 @@ export function LessonPage() {
       {l.body.kind === "quiz" && <Quiz key={l.id} lesson={l as Of<"quiz">} />}
       {l.body.kind === "artifact" && <Artifact lesson={l as Of<"artifact">} />}
       {l.body.kind === "practice" && <Practice lesson={l as Of<"practice">} />}
+      {l.body.kind === "page" && <Page key={l.id} lesson={l as Of<"page">} />}
       <nav className="lesson-nav">
         {l.previous ? <Link to={`/learning/${program}/${l.previous}`}>← {t("learning.previous")}</Link> : <span />}
         {l.next ? (

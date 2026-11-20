@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { AdiSummary, SkillSummary, TaskSummary } from "../analytics/SummaryCards";
 import { Icon } from "../app/icons";
 import { ThemeToggle } from "../app/theme";
+import { GeneratedPrograms } from "../learning/GeneratedPrograms";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { ProgramTile } from "../types/api";
@@ -95,6 +96,8 @@ export function HomePage() {
           <Tile key={p.id} p={p} />
         ))}
       </div>
+
+      <GeneratedPrograms />
 
       <h2 className="section-title">{t("home.progressTitle")}</h2>
       <div className="three-col">

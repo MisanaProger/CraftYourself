@@ -4,6 +4,8 @@ import type {
   Conversation,
   ConversationView,
   Criterion,
+  GenerateProgram,
+  GeneratedProgram,
   LearningSession,
   LessonProgress,
   LessonView,
@@ -61,6 +63,14 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
 const json = async <T>(method: string, path: string, body?: unknown) => (await send(method, path, body)).json() as Promise<T>;
 const q = (lang: string) => `lang=${encodeURIComponent(lang)}`;
 
+/** URLs of untrusted documents, loaded only into `<iframe sandbox="allow-scripts">`. */
+export const pages = {
+  lesson: (p: string, l: string, theme: string) =>
+    `${BASE}/learning/programs/${encodeURIComponent(p)}/lessons/${encodeURIComponent(l)}/page?theme=${theme}`,
+  message: (conversation: string, message: string, n: number, theme: string) =>
+    `${BASE}/conversations/${encodeURIComponent(conversation)}/messages/${encodeURIComponent(message)}/pages/${n}?theme=${theme}`,
+};
+
 export const api = {
   projects: () => json<Project[]>("GET", "/projects"),
   project: (id: string) => json<Project>("GET", `/projects/${id}`),
@@ -103,6 +113,9 @@ export const api = {
   artifactProgress: (p: string, l: string, score: number, completed: boolean) =>
     json<LessonProgress>("POST", `/learning/programs/${p}/lessons/${l}/progress`, { score, completed }),
   startPractice: (p: string, l: string) => json<StartedSession>("POST", `/learning/programs/${p}/lessons/${l}/practice`, {}),
+  generatedPrograms: () => json<GeneratedProgram[]>("GET", "/learning/generated"),
+  generateProgram: (req: GenerateProgram) => json<GeneratedProgram>("POST", "/learning/generated", req),
+  deleteGeneratedProgram: (id: string) => send("DELETE", `/learning/generated/${encodeURIComponent(id)}`),
 
   adi: () => json<AdiOverview>("GET", "/analytics/adi"),
   skillMatrix: (lang: string) => json<SkillMatrix>("GET", `/analytics/disciplines?${q(lang)}`),
