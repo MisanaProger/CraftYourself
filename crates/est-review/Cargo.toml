@@ -1,0 +1,9 @@
+[package]
+name = "est-review"
+description = "Git workflow review: commits against the repository's conventions, pull request drafts, Issue texts (pure)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

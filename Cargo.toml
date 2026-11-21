@@ -33,6 +33,7 @@ est-discipline = { path = "crates/est-discipline" }
 est-problems = { path = "crates/est-problems" }
 est-issues = { path = "crates/est-issues" }
 est-remote = { path = "crates/est-remote" }
+est-review = { path = "crates/est-review" }
 
 anyhow = "1"
 async-trait = "0.1"
