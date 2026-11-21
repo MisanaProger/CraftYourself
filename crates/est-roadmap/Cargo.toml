@@ -1,0 +1,18 @@
+[package]
+name = "est-roadmap"
+description = "Roadmap Management: roadmap data model, integrity checks, metrics and generated views"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "est-roadmap"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

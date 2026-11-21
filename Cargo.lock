@@ -721,6 +721,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "est-roadmap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "est-sandbox"
 version = "0.1.0"
 dependencies = [
