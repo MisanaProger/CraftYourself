@@ -46,6 +46,7 @@
 | `est-remote` | §13, §8 | порт `RemoteSources` по HTTPS: GitHub, GitLab, Codeforces, LeetCode; публикация комментария |
 | `est-storage` | §19 | SQLite, миграции `migrations/` |
 | `est-api`, `est-cli` | §22, §16 | REST, WebSocket, Host/Origin-защита; CLI `est` |
+| `est-roadmap` | — | инструмент разработки, не часть продукта: данные roadmap, правила целостности R01–R14, метрики, генерация `docs/roadmaps/` (ADR-0001) |
 | `apps/desktop` | §16, §21 | десктопное приложение на Tauri 2: демон в том же процессе на loopback-порту, встроенный интерфейс, без IPC |
 
 ## Сквозной сценарий (§30)
@@ -362,15 +363,8 @@
 
 ## Состояние этапов (§24)
 
-| Этап | Статус |
-|---|---|
-| 0. Foundation | ✅ workspace, React, REST, SQLite + миграции, конфиг, логирование, CI |
-| 1. Project & Workspace | ✅ локальные репозитории, языки, рабочие каталоги, IDE, status/diff |
-| 2. Language & Sandbox | ✅ адаптеры Rust/C/C++/Python/JS, песочница Docker/Podman с лимитами и изоляцией, разбор итогов тестов |
-| 3. Task & Issue Engine | ✅ задачи, импорт упражнений, статусы, сессии, импорт Issue GitHub/GitLab с проверкой пригодности, загрузка условий задач с сайта |
-| 4. Chat-first Conversation Engine | ✅ диалоги, история, события, WebSocket, потоковые ответы |
-| 5. AI Gateway & Engagement | ✅ провайдер, L0–L4, эскалация с согласием, Documentation Boundary, permission gates внешних действий (чтение — по разрешению на запрос, публикация — через подтверждённый черновик) |
-| 6. Conversation Intelligence | ✅ рекомендации по снимку активности, Session Summary, Knowledge Profile, экспорт/удаление |
-| 7. ADI & ESM | ✅ ADI с двойным затуханием (observed-0.2 со скопированным кодом), объяснение ADI моделью без изменения числа, каталог ESM, оценка навыков по evidence, навыки из Issue, измерение Transfer |
-| 8. Interactive Learning | ◐ программы, уроки, тесты с проверкой на сервере, артефакты в sandboxed iframe, практические проекты, программы по запросу (генерация нейросетью), LaTeX и изолированные HTML-страницы в уроках и чате; ◯ остальные программы |
-| 9. Git Workflow & Analytics | ✅ проверка коммитов по соглашениям проекта, подготовка и публикация PR через гейт, проверка и публикация Issue, качество коммитов в сводках и Skill Matrix |
+Статусы этапов и всех запланированных работ ведутся в одном месте — данных
+`roadmap/*.toml`; представления генерируются в `docs/roadmaps/`, точка входа —
+[`ROADMAP.md`](../ROADMAP.md) (решение: [ADR-0001](decisions/ADR-0001-roadmap-as-data.md)).
+Этапы 0–9 спецификации v0.3 — эпики программ PRD-001, TEC-001 и LRN-001;
+сопоставление кода с ТЗ Functional Expansion — [аудит](audit/2026-11-repository-audit.md).

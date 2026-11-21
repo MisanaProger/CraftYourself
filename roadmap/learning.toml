@@ -1,0 +1,379 @@
+# Learning Roadmap — methodology. Every rule is decided in code and testable
+# without a model (AGENTS.md rules 1, 7). Technical items implement these
+# with `implements`. Rules: docs/roadmap-management.md.
+
+# ---------------------------------------------------------------------------
+# LRN-001 — the methodology in place.
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "LRN-001"
+name = "Assessment methodology in place"
+kind = "program"
+status = "done"
+priority = "P0"
+source = "spec v0.3 §7–§11"
+description = "Engagement levels, the AI Dependency Index and the Engineering Skill Matrix as shipped in stages 5–7."
+docs = ["docs/architecture.md"]
+
+[[item]]
+id = "LRN-002"
+name = "Engagement levels L0–L4 with consent"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "LRN-001"
+description = "L0 questions only, L1 hints, L2 explanations and pages, L3–L4 code; one-step escalation with explicit consent; conceptual questions answered at every level."
+acceptance = ["[x] Rules are deterministic (est-ai-policy/src/engagement.rs) and unit-tested"]
+components = ["crates/est-ai-policy/src/engagement.rs", "crates/est-domain/src/engagement.rs"]
+
+[[item]]
+id = "LRN-003"
+name = "ADI observed-0.2"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "LRN-001"
+description = "Issue score from observed events (answers by level, own commits, rejected escalations, conceptual questions, copied code), aggregated with double decay by time and by number of later Issues."
+acceptance = ["[x] scoring_version is stored with every assessment", "[x] Escalation without using the help does not raise the ADI"]
+components = ["crates/est-dependency"]
+
+[[item]]
+id = "LRN-004"
+name = "Skill Matrix esm-catalog-0.2"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "LRN-001"
+description = """
+10 disciplines with skills; five dimensions (Theory, Practice, Diagnosis, Transfer, \
+Independence); statuses not_assessed, insufficient_evidence, provisional, established, \
+needs_reassessment (180 days); confidence by number of references; source weights."""
+acceptance = ["[x] Missing data is not_assessed, never zero", "[x] Reading and abandoned Issues are not evidence"]
+components = ["crates/est-discipline", "crates/est-application/src/skills.rs"]
+
+[[item]]
+id = "LRN-005"
+name = "Transfer by change of context"
+kind = "epic"
+status = "done"
+priority = "P1"
+parent = "LRN-001"
+description = "Completed practice or Issue with Practice ≥ 60 gives Transfer evidence to skills that earlier had evidence in a different context (lesson, problem, project:<id>)."
+acceptance = ["[x] est_discipline::transfer is unit-tested"]
+components = ["crates/est-discipline"]
+
+[[item]]
+id = "LRN-006"
+name = "Session signals and knowledge profile"
+kind = "epic"
+status = "done"
+priority = "P1"
+parent = "LRN-001"
+description = "Signals (worked_independently, heavy_help, tests_recovered, criteria_open, abandoned, …) from fixed rules; topic states needs_practice / developing / independent."
+acceptance = ["[x] Signals are derived from counters only, without messages or code"]
+components = ["crates/est-domain/src/knowledge.rs"]
+
+# ---------------------------------------------------------------------------
+# LRN-010 — Evidence-based learning (Functional Expansion TZ, direction I).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "LRN-010"
+name = "Evidence-based learning"
+kind = "program"
+status = "planned"
+priority = "P0"
+source = "TZ §2"
+description = "Assess knowledge by observed results of activity, re-check it over time, find gaps and systematic errors, and adapt the work to them."
+docs = ["docs/audit/2026-11-repository-audit.md"]
+
+[[item]]
+id = "LRN-011"
+name = "Evidence model"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "LRN-010"
+release = "REL-002"
+source = "TZ 2.1"
+description = "What counts as evidence, of which type, with what reliability — the rules TEC-011 implements."
+docs = ["docs/specifications/evidence-assessment.md"]
+
+[[item]]
+id = "LRN-012"
+name = "Seven evidence types and their rules"
+kind = "feature"
+status = "ready"
+priority = "P0"
+parent = "LRN-011"
+source = "TZ 2.1"
+description = "independent_solution, hinted_solution, self_correction, explanation, repeated_application, new_context_application, control_task — each defined by observable conditions."
+acceptance = [
+  "[ ] Each type has a definition in observable terms (events, levels, tests) in the specification",
+  "[ ] Types are mutually exclusive per (reference, skill) except repeated/new-context, which add to the base type",
+  "[ ] Explanation evidence requires a checked answer (quiz or reviewed reflection), not the model's opinion",
+]
+docs = ["docs/specifications/evidence-assessment.md#types"]
+
+[[item]]
+id = "LRN-013"
+name = "Evidence reliability"
+kind = "feature"
+status = "ready"
+priority = "P0"
+parent = "LRN-011"
+description = "A reliability grade per record (high, medium, low) from how the result was checked: automated tests and server-graded quizzes are high; self-report and model review are low."
+acceptance = [
+  "[ ] The grade is a pure function of the record's check method and completeness",
+  "[ ] Low-reliability evidence cannot make a skill established on its own",
+]
+docs = ["docs/specifications/evidence-assessment.md#reliability"]
+
+[[item]]
+id = "LRN-014"
+name = "Help accounting per evidence"
+kind = "feature"
+status = "ready"
+priority = "P0"
+parent = "LRN-011"
+description = "Each record stores the highest level used, hints by stage and whether code from the mentor was copied — the observed facts already used by the ADI, now per skill."
+acceptance = [
+  "[ ] Help is recorded from events, not inferred from text",
+  "[ ] The ADI and the Skill Matrix remain independent: help changes the evidence type, not the ADI",
+]
+docs = ["docs/specifications/evidence-assessment.md#record"]
+
+[[item]]
+id = "LRN-015"
+name = "Competency graph content"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "LRN-010"
+release = "REL-002"
+depends_on = ["TEC-022"]
+source = "TZ 2.2"
+description = "Competencies, knowledge units and prerequisites for the ten catalog disciplines."
+docs = ["docs/specifications/competency-graph.md"]
+
+[[item]]
+id = "LRN-016"
+name = "Prerequisite map of the catalog"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-015"
+description = "Prerequisite edges between existing skills (e.g. data-structures/segment-tree ← algorithms/complexity), reviewed per discipline."
+
+[[item]]
+id = "LRN-017"
+name = "Numerical methods graph"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-015"
+description = "The TZ 2.2 example in full: calculus, derivatives, computational error, algorithmisation, numerical stability, equation-solving methods."
+
+[[item]]
+id = "LRN-018"
+name = "Knowledge retention"
+kind = "epic"
+status = "proposed"
+priority = "P0"
+parent = "LRN-010"
+release = "REL-003"
+risk = "high"
+source = "TZ 2.3"
+description = "Mastery is dynamic: a skill is re-checked, and its stability depends on time and on the learning interactions since the last check."
+docs = ["docs/specifications/retention-engine.md"]
+
+[[item]]
+id = "LRN-019"
+name = "Retention model"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-018"
+depends_on = ["TEC-014"]
+description = "Stability per skill decaying with time and with the number of later interactions (the same double decay idea as the ADI), increased by successful re-checks."
+
+[[item]]
+id = "LRN-020"
+name = "Forgetting signals and reassessment triggers"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-018"
+depends_on = ["LRN-019"]
+extends = ["LRN-004"]
+description = "Replace the fixed 180-day needs_reassessment rule with triggers from the retention model and observed signals (a failed check on a skill marked established, heavy help on a known skill)."
+
+[[item]]
+id = "LRN-021"
+name = "Review scheduling policy"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-018"
+depends_on = ["LRN-019"]
+description = "When to propose a control Issue for a skill, how many at a time, and which kind (short check or application in a new context)."
+
+[[item]]
+id = "LRN-022"
+name = "Adaptive learning"
+kind = "epic"
+status = "proposed"
+priority = "P0"
+parent = "LRN-010"
+release = "REL-003"
+risk = "high"
+source = "TZ 2.5"
+description = "Difficulty, hint budget, learning path, bottlenecks — from the history and dynamics of competencies, never from the last result alone."
+docs = ["docs/specifications/adaptive-learning.md"]
+
+[[item]]
+id = "LRN-023"
+name = "Adaptive difficulty"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-022"
+depends_on = ["TEC-014", "LRN-019"]
+description = "Target difficulty from the trend of the relevant skills over a window of Issues; one result cannot move it more than one step."
+
+[[item]]
+id = "LRN-024"
+name = "Hint budget"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-022"
+depends_on = ["LRN-014"]
+description = "How often and at which stage the learner asks for help; a budget per Issue shapes how hints are offered within the consented level."
+
+[[item]]
+id = "LRN-025"
+name = "Learning path generator"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-022"
+depends_on = ["TEC-024", "LRN-023", "LRN-020"]
+description = "Deterministic ranking of next steps from gaps, bottlenecks, due reviews and goals; a model may phrase the explanation but not change the ranking."
+
+[[item]]
+id = "LRN-026"
+name = "Learning bottleneck detection"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "LRN-022"
+depends_on = ["TEC-024"]
+description = "Skills whose weakness blocks the most of the learner's targets in the graph."
+
+[[item]]
+id = "LRN-028"
+name = "Misconception detection"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "LRN-010"
+release = "REL-003"
+source = "TZ 2.4"
+description = "Classify errors, tell systematic from random ones, track their correction and feed corrective tasks to the path generator."
+docs = ["docs/specifications/misconception-detection.md"]
+
+[[item]]
+id = "LRN-029"
+name = "Error taxonomy"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-028"
+description = "Per-discipline error classes tied to skills (off-by-one, wrong invariant, unhandled edge case, numerical instability, …)."
+
+[[item]]
+id = "LRN-030"
+name = "Systematic versus random errors"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-028"
+depends_on = ["LRN-029"]
+description = "An error class is a misconception when it recurs across independent references within a window; one occurrence is a slip."
+
+[[item]]
+id = "LRN-031"
+name = "Corrective tasks and correction history"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-028"
+depends_on = ["LRN-030"]
+description = "A misconception is resolved by later independent evidence without the error; the history is kept."
+
+[[item]]
+id = "LRN-032"
+name = "Advanced learning analytics"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "LRN-010"
+release = "REL-004"
+source = "TZ Phase 4"
+description = "Transfer, confidence calibration, reflection, solution comparison and the journal."
+
+[[item]]
+id = "LRN-033"
+name = "Confidence calibration"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-032"
+source = "TZ 2.5 Confidence Tracking, 2.11"
+description = "Stated confidence versus the result: over- and under-estimation, agreement and its trend."
+docs = ["docs/specifications/adaptive-learning.md#confidence"]
+
+[[item]]
+id = "LRN-034"
+name = "Transfer assessment v2"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-032"
+extends = ["LRN-005"]
+source = "TZ 2.6"
+description = "Transfer requires choosing and justifying a method in a changed context (e.g. checking Newton's convergence conditions); reproducing a solved example does not count."
+docs = ["docs/specifications/transfer-assessment.md"]
+
+[[item]]
+id = "LRN-035"
+name = "Self-reflection"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-032"
+source = "TZ 2.9"
+description = "Reflection prompts for selected Issue types; answers are stored and used as context for later analysis, and become explanation evidence only when checked."
+
+[[item]]
+id = "LRN-036"
+name = "Solution comparison criteria"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "LRN-032"
+source = "TZ 2.7"
+description = "Correctness, time and space complexity, stability, accuracy, readability, extensibility and applicability, weighted per discipline and Issue; the choice of method is assessed, not only the answer."
+docs = ["docs/specifications/solution-comparison.md"]
+
+[[item]]
+id = "LRN-037"
+name = "Learning journal content"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "LRN-032"
+source = "TZ 2.10"
+description = "Which entries the journal shows and how they are derived from evidence, misconceptions, reflections and re-checks."
