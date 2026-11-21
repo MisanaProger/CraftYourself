@@ -1,0 +1,780 @@
+# Technical Roadmap — architecture, components, technical debt (tag `debt`).
+# Rules: docs/roadmap-management.md.
+
+# ---------------------------------------------------------------------------
+# TEC-001 — the architecture in place (spec v0.3), inventoried by the audit.
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "TEC-001"
+name = "Modular monolith (spec v0.3)"
+kind = "program"
+status = "done"
+priority = "P0"
+source = "spec v0.3 §3–§22"
+description = "Rust workspace with dependencies pointing inwards (est-domain ← est-application ← adapters ← est-api/est-cli), ports in est-application, composition root in est-api/src/runtime.rs."
+docs = ["docs/architecture.md", "AGENTS.md"]
+
+[[item]]
+id = "TEC-002"
+name = "Layers and ports"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-001"
+release = "REL-001"
+description = "est-domain has no SQLx/Axum/Git/LLM/Docker dependencies; every infrastructure capability is a port in est-application/src/ports.rs with an adapter crate."
+acceptance = ["[x] est-domain depends only on est-core, serde, serde_json and thiserror", "[x] Adapters are wired only in est-api/src/runtime.rs"]
+components = ["crates/est-domain", "crates/est-application/src/ports.rs", "crates/est-api/src/runtime.rs"]
+
+[[item]]
+id = "TEC-003"
+name = "SQLite storage with append-only migrations"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-001"
+release = "REL-001"
+description = "Repositories over SQLite with portable SQL; migrations 0001–0009."
+acceptance = ["[x] Migrations live in /migrations and are never edited once applied"]
+components = ["crates/est-storage", "migrations"]
+
+[[item]]
+id = "TEC-004"
+name = "REST and WebSocket API with the local guard"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-001"
+release = "REL-001"
+description = "Axum /api/v1 and /api/v1/events; the daemon trusts only its own Host and Origin; mutating endpoints take JSON."
+acceptance = ["[x] Requests with a foreign Host or Origin are refused", "[x] User-visible flows are covered in crates/est-api/tests/learning_loop.rs"]
+components = ["crates/est-api", "crates/est-api/src/guard.rs", "crates/est-api/tests/learning_loop.rs"]
+
+[[item]]
+id = "TEC-005"
+name = "AI Gateway"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-001"
+release = "REL-001"
+description = "OpenAI-compatible, OpenAI and Claude providers with presets, a switchable LlmSlot, streaming through ProseStream so code never reaches the client before the policy check."
+acceptance = ["[x] Providers switch without a restart and log ai.provider.changed without the key", "[x] Keys are stored outside config, events, logs and exports"]
+components = ["crates/est-ai", "crates/est-ai-policy/src/stream.rs", "crates/est-application/src/streaming.rs"]
+
+[[item]]
+id = "TEC-006"
+name = "Policy engine"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-001"
+release = "REL-001"
+description = "Request classification, required level, one-step escalation, response constraints, tool permissions and external-action gates — all in code before a model is called."
+acceptance = ["[x] A model cannot raise its own level or assume consent", "[x] The mentor (Initiator::Mentor) is refused every external action"]
+components = ["crates/est-ai-policy"]
+
+[[item]]
+id = "TEC-007"
+name = "Remote sources and the publish gate"
+kind = "epic"
+status = "done"
+priority = "P1"
+parent = "TEC-001"
+release = "REL-001"
+description = "RemoteSources port over HTTPS for GitHub, GitLab, Codeforces and LeetCode; reading needs per-request permission, publishing needs a confirmed draft with a digest."
+acceptance = ["[x] Reading without allow_network returns 403 and does not call the port", "[x] Publishing requires confirming the same digest within 15 minutes"]
+components = ["crates/est-remote", "crates/est-application/src/remote.rs", "crates/est-ai-policy/src/gates.rs"]
+
+# ---------------------------------------------------------------------------
+# TEC-010 — Assessment foundation (TZ Phase 2).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "TEC-010"
+name = "Assessment foundation"
+kind = "program"
+status = "planned"
+priority = "P0"
+source = "TZ Phase 2"
+description = """
+Stored, traceable and reproducible assessment: an evidence ledger, provenance of every \
+assessment, versioned scoring rules, the competency graph and the extended Issue lifecycle."""
+docs = ["docs/specifications/evidence-assessment.md", "docs/decisions/ADR-0002-evidence-ledger.md"]
+
+[[item]]
+id = "TEC-011"
+name = "Evidence ledger"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "TEC-010"
+release = "REL-002"
+risk = "medium"
+source = "TZ 2.1"
+description = """
+Today evidence is recomputed from lesson_results and session_summaries on every request \
+(est-application/src/skills.rs) and only its latest form is visible. The ledger stores \
+evidence records with all fields required by TZ 2.1, append-only, so an assessment can be \
+explained and reproduced."""
+docs = ["docs/specifications/evidence-assessment.md", "docs/decisions/ADR-0002-evidence-ledger.md"]
+
+[[item]]
+id = "TEC-012"
+name = "Evidence record in the domain"
+kind = "feature"
+status = "ready"
+priority = "P0"
+parent = "TEC-011"
+implements = ["LRN-014"]
+source = "TZ 2.1"
+description = "EvidenceRecord in est-domain: learner, Issue/lesson reference, skill reference, evidence type, observed_at, help level, check result, reliability, source context, rule version."
+acceptance = [
+  "[ ] EvidenceRecord carries every field listed in TZ 2.1 and a rule version",
+  "[ ] Evidence types are the seven of TZ 2.1 (LRN-012) as an enum, serialised in snake_case",
+  "[ ] Help level is the highest engagement level used plus hint counts by stage",
+  "[ ] Unit tests cover invariants: score 0–100, skill exists in the catalog version, observed_at not in the future",
+]
+components = ["crates/est-domain"]
+docs = ["docs/specifications/evidence-assessment.md#record"]
+
+[[item]]
+id = "TEC-013"
+name = "Evidence derivation from observed events"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-011"
+depends_on = ["TEC-012"]
+implements = ["LRN-012", "LRN-013"]
+risk = "medium"
+description = "Pure rules turning a finished session, quiz attempt, artifact result or control task into evidence records — several per Issue, distinguishing independent from supported work."
+acceptance = [
+  "[ ] One Issue can produce several records (per skill and per type)",
+  "[ ] Independent and supported executions produce different types and reliabilities",
+  "[ ] The same input always yields the same records (property test over shuffled event order)",
+  "[ ] Derivation never calls a model and never reads the ADI",
+]
+components = ["crates/est-discipline"]
+
+[[item]]
+id = "TEC-014"
+name = "Persistent evidence store"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-011"
+depends_on = ["TEC-012"]
+tags = ["debt"]
+description = "Append-only table for evidence records (new migration), repository port and adapter; records are corrected by superseding records, never edited."
+acceptance = [
+  "[ ] A new migration adds the evidence table; earlier migrations are untouched",
+  "[ ] Records are never updated in place; a correction references the record it supersedes",
+  "[ ] Deleting a conversation removes or anonymises its records as today's summaries are",
+  "[ ] Records appear in the full data export",
+]
+components = ["crates/est-storage", "migrations", "crates/est-application/src/ports.rs"]
+
+[[item]]
+id = "TEC-015"
+name = "Backfill evidence from existing data"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-011"
+depends_on = ["TEC-013", "TEC-014"]
+description = "On first start after the migration, existing lesson_results and session_summaries are converted to records with rule version `backfill-1` and reliability that marks missing fields."
+acceptance = [
+  "[ ] The Skill Matrix computed from backfilled records equals the one computed today (test with fixtures)",
+  "[ ] Backfill runs once and is idempotent",
+]
+
+[[item]]
+id = "TEC-016"
+name = "Assessment explanation API"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-011"
+depends_on = ["TEC-014", "TEC-018"]
+implements = ["PRD-032"]
+description = "GET endpoints returning the records and the computation behind a skill's or discipline's assessment."
+acceptance = [
+  "[ ] GET /analytics/skills/{discipline}/{skill}/evidence returns records with provenance",
+  "[ ] The response includes the rule id, version and inputs that reproduce the score",
+  "[ ] Covered in learning_loop.rs; client added to frontend/src/services/api.ts",
+]
+
+[[item]]
+id = "TEC-017"
+name = "Provenance and assessment versioning"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "TEC-010"
+release = "REL-002"
+source = "TZ 4.4, 3.6, Phase 2 “Assessment Versioning”"
+description = "Every assessment records what produced it, and can be recomputed under the same rule version."
+docs = ["docs/specifications/evidence-assessment.md#provenance"]
+
+[[item]]
+id = "TEC-018"
+name = "Provenance of assessments"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-017"
+depends_on = ["TEC-014"]
+source = "TZ 4.4"
+description = "For each assessment: the triggering learner action (event ids), criteria version, the model involved (if any, only as explainer), evidence ids and the computation."
+acceptance = [
+  "[ ] Every ADI assessment and Skill Matrix snapshot stores event ids, rule version and evidence ids",
+  "[ ] A model's participation is recorded by provider/model name without secrets",
+  "[ ] An assessment without provenance cannot be stored (domain invariant)",
+]
+
+[[item]]
+id = "TEC-019"
+name = "Versioned scoring rules"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-017"
+depends_on = ["TEC-018"]
+description = "A registry of rule versions (observed-0.2, esm-catalog-0.2, …) kept in code so an old assessment can be recomputed with its own version and compared with the current one."
+acceptance = [
+  "[ ] Recomputing a stored assessment with its version returns the stored result (test)",
+  "[ ] A version bump never silently changes stored assessments; re-scoring is an explicit, recorded action",
+]
+
+[[item]]
+id = "TEC-020"
+name = "Reproducible task snapshots"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-017"
+depends_on = ["TEC-019"]
+source = "TZ 3.6"
+description = "Each task attempt pins the statement, tests, criteria, tools (sandbox image digest), generation parameters and assessment model version; a replay compares results under the same conditions."
+
+[[item]]
+id = "TEC-021"
+name = "Competency graph"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "TEC-010"
+release = "REL-002"
+risk = "medium"
+source = "TZ 2.2"
+description = "Discipline → Competency → Skill → Knowledge Unit with prerequisite edges, assessments and Issues attached; extends the flat esm-catalog-0.2."
+docs = ["docs/specifications/competency-graph.md"]
+
+[[item]]
+id = "TEC-022"
+name = "Graph model and catalog as data"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-021"
+extends = ["LRN-004"]
+description = "Move the catalog from Rust literals to versioned TOML (esm-catalog-0.3) with competencies, knowledge units and prerequisites; existing skill ids keep working."
+acceptance = [
+  "[ ] Every esm-catalog-0.2 skill id resolves in 0.3",
+  "[ ] Nodes have names in ru, en and uz",
+  "[ ] The catalog version is stored with every assessment",
+]
+components = ["crates/est-discipline"]
+
+[[item]]
+id = "TEC-023"
+name = "Graph validation"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-021"
+depends_on = ["TEC-022"]
+description = "A test rejecting prerequisite cycles, dangling references and unreachable nodes in the catalog."
+acceptance = ["[ ] cargo test -p est-discipline fails on a cycle or a dangling prerequisite"]
+
+[[item]]
+id = "TEC-024"
+name = "Gap queries"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-021"
+depends_on = ["TEC-022", "TEC-014"]
+description = "Pure functions over the graph and the evidence: unmet prerequisites of a skill, critical gaps for a target, the skills an Issue exercises."
+acceptance = [
+  "[ ] A prerequisite is unmet when not_assessed, insufficient or below threshold — the reason is returned",
+  "[ ] The numerical-methods example of TZ 2.2 is a fixture test",
+]
+
+[[item]]
+id = "TEC-025"
+name = "Competency graph API and view"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-021"
+depends_on = ["TEC-024"]
+description = "GET the graph with assessments per node; a frontend view of dependencies between skills."
+
+[[item]]
+id = "TEC-026"
+name = "Issue lifecycle engine"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "TEC-010"
+release = "REL-002"
+risk = "high"
+source = "TZ 2.8"
+description = """
+Creation → Validation → Prerequisite Check → Investigation → Solution → Testing → Reflection → \
+Assessment → Skill Evidence → Progress Update, layered over the existing TaskStatus and \
+session flow instead of replacing them."""
+docs = ["docs/specifications/issue-lifecycle.md"]
+
+[[item]]
+id = "TEC-027"
+name = "Lifecycle stages"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-026"
+description = "A stage machine in est-domain with recorded stage events; TaskStatus stays as the coarse status."
+acceptance = [
+  "[ ] Stage transitions are validated in est-domain with unit tests",
+  "[ ] Each transition is an event (est_core::events) with task and session ids",
+  "[ ] Existing tasks map to stages without a data migration loss",
+]
+components = ["crates/est-domain/src/task.rs", "crates/est-core"]
+
+[[item]]
+id = "TEC-028"
+name = "Issue validation"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-026"
+depends_on = ["TEC-027"]
+description = "Fixed rules checking a task's conditions, constraints and assessment criteria before it can start; extends the Issue suitability check."
+
+[[item]]
+id = "TEC-029"
+name = "Prerequisite check"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "TEC-026"
+depends_on = ["TEC-027", "TEC-024"]
+description = "Before Investigation, unmet prerequisites are shown with suggested lessons; the learner may continue — the check informs, it never locks work."
+
+[[item]]
+id = "TEC-030"
+name = "Issue dependencies and branching"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-026"
+depends_on = ["TEC-027"]
+description = "Links between tasks and several scenarios of passing one task (e.g. bisection-first or Newton-first)."
+
+[[item]]
+id = "TEC-031"
+name = "Issue replay with history"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-026"
+depends_on = ["TEC-027", "TEC-014"]
+tags = ["debt"]
+description = "Re-taking an Issue keeps earlier results; today re-completion replaces the Issue's ADI assessment."
+
+[[item]]
+id = "TEC-032"
+name = "Dynamic Issue generation from gaps"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-026"
+release = "REL-003"
+depends_on = ["LRN-025", "TEC-028"]
+description = "A model drafts a task for a detected gap; code validates it (TEC-028) and it starts at L0 like any Issue."
+
+[[item]]
+id = "TEC-033"
+name = "Issue schema"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-026"
+depends_on = ["TEC-027"]
+description = "docs/schemas/issue-schema.json for Exercise Manifests and lifecycle records, checked by a test."
+
+# ---------------------------------------------------------------------------
+# TEC-040 — Adaptive learning engine and analytics (TZ Phases 3–4).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "TEC-040"
+name = "Adaptive learning engine"
+kind = "program"
+status = "proposed"
+priority = "P0"
+source = "TZ Phases 3–4"
+description = "The deterministic components that turn evidence into adaptation and analytics, testable without a model."
+docs = ["docs/specifications/adaptive-learning.md"]
+
+[[item]]
+id = "TEC-041"
+name = "Learner model"
+kind = "epic"
+status = "proposed"
+priority = "P0"
+parent = "TEC-040"
+release = "REL-003"
+risk = "high"
+description = "A pure crate computing competency dynamics, retention, bottlenecks and the next steps from evidence and the graph."
+
+[[item]]
+id = "TEC-042"
+name = "Crate est-adaptive"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "TEC-041"
+depends_on = ["TEC-024"]
+implements = ["LRN-019", "LRN-020", "LRN-023", "LRN-025", "LRN-026"]
+description = "Pure crate (no I/O) with difficulty selection, path generation and bottleneck detection; its tests run without the API, a database or a model."
+
+[[item]]
+id = "TEC-043"
+name = "Trajectory log"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "TEC-041"
+depends_on = ["TEC-042"]
+implements = ["PRD-033"]
+description = "Append-only record of every change to the learning path and difficulty: date, before, after, reason, rule version."
+
+[[item]]
+id = "TEC-044"
+name = "Review scheduler"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "TEC-041"
+depends_on = ["TEC-042", "TEC-027"]
+implements = ["LRN-021"]
+description = "Computes due re-checks and creates control Issues; runs on request (no background job is required in the Local Edition)."
+
+[[item]]
+id = "TEC-045"
+name = "Learning analytics storage"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "TEC-040"
+release = "REL-004"
+description = "Storage and APIs for reflection, confidence, solution comparison and the journal."
+
+[[item]]
+id = "TEC-046"
+name = "Reflection answers"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-045"
+depends_on = ["TEC-027"]
+implements = ["LRN-035"]
+description = "Table and API for reflection answers bound to the Reflection stage; answers are the learner's text and are exportable and deletable."
+
+[[item]]
+id = "TEC-047"
+name = "Confidence records"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-045"
+depends_on = ["TEC-014"]
+implements = ["LRN-033"]
+description = "Stated confidence before a control task, joined with its result; calibration metrics computed in code."
+
+[[item]]
+id = "TEC-048"
+name = "Journal projection"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "TEC-045"
+depends_on = ["TEC-014", "TEC-046"]
+implements = ["LRN-037"]
+description = "A read model over evidence, misconceptions, reflections and retention checks, with chronological paging and filters."
+
+[[item]]
+id = "TEC-049"
+name = "Solution comparison model"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-045"
+depends_on = ["TEC-027"]
+related_to = ["INF-021"]
+implements = ["LRN-036"]
+description = "Several solutions per Issue scored on discipline-specific criteria; complexity comes from declared analysis until measured analysis (INF-021) exists."
+
+[[item]]
+id = "TEC-050"
+name = "Hint budget in the policy engine"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "TEC-041"
+depends_on = ["TEC-012"]
+implements = ["LRN-024"]
+description = "Count hints by Issue and stage in est-ai-policy; the budget changes what the mentor offers within the current level and never raises the level (AGENTS.md rules 1–2)."
+
+[[item]]
+id = "TEC-051"
+name = "Misconception detector"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-041"
+depends_on = ["TEC-014", "TEC-022"]
+implements = ["LRN-029", "LRN-030", "LRN-031"]
+description = "Classifies failed checks and review findings into the error taxonomy; a model may propose a class, code decides and stores the grounds."
+
+[[item]]
+id = "TEC-052"
+name = "Transfer assessment v2"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "TEC-045"
+depends_on = ["TEC-020", "TEC-022"]
+implements = ["LRN-034"]
+description = "Changed-context tasks, method-selection checks and comparison of first and repeated application, replacing the context-only Transfer rule."
+
+# ---------------------------------------------------------------------------
+# TEC-060 — technical debt found by the audit (other debt items carry the
+# `debt` tag where they are resolved: TEC-014, TEC-031, INF-034).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "TEC-060"
+name = "Technical debt"
+kind = "program"
+status = "planned"
+priority = "P1"
+description = "Known debt not covered by a feature elsewhere. Everything tagged `debt` is listed in the metrics view."
+
+[[item]]
+id = "TEC-061"
+name = "Known debt"
+kind = "epic"
+status = "planned"
+priority = "P1"
+parent = "TEC-060"
+description = "Debt items from the 2026-11 audit."
+
+[[item]]
+id = "TEC-062"
+name = "Publish drafts live only in memory"
+kind = "task"
+status = "proposed"
+priority = "P2"
+parent = "TEC-061"
+tags = ["debt"]
+description = "A daemon restart loses pending drafts (est-application/src/remote.rs). Acceptable for 15-minute drafts; revisit if drafts get longer lives."
+
+[[item]]
+id = "TEC-065"
+name = "Generated programs give no skill evidence"
+kind = "task"
+status = "proposed"
+priority = "P1"
+parent = "TEC-061"
+depends_on = ["TEC-022"]
+tags = ["debt"]
+description = "Generated programs have no disciplines, so their quizzes are not evidence. Map them to catalog skills once the catalog is data."
+
+[[item]]
+id = "TEC-067"
+name = "Workspace repository URL points to the old name"
+kind = "task"
+status = "proposed"
+priority = "P3"
+parent = "TEC-061"
+tags = ["debt"]
+description = "Cargo.toml workspace.package.repository is .../Engineer-Craft; the repository is CraftYourself."
+acceptance = ["[ ] workspace.package.repository names the current repository"]
+
+[[item]]
+id = "TEC-069"
+name = "PostgreSQL storage behind the same ports"
+kind = "task"
+status = "proposed"
+priority = "P3"
+parent = "TEC-061"
+description = "The schema uses portable SQL so a PostgreSQL adapter can back the same ports (Cloud Edition)."
+
+# ---------------------------------------------------------------------------
+# TEC-080 — Development process: audit and Roadmap Management (TZ Phases 0–1).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "TEC-080"
+name = "Development process"
+kind = "program"
+status = "in-progress"
+priority = "P0"
+source = "TZ §5, Phases 0–1"
+description = "How the project plans and tracks itself: the repository audit and a multi-level, validated Roadmap Management system."
+docs = ["docs/roadmap-management.md"]
+
+[[item]]
+id = "TEC-081"
+name = "Repository audit"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-080"
+release = "REL-002"
+source = "TZ Phase 0"
+description = "Inventory of implemented, partial and missing functionality against the TZ, with references to code; gap analysis and architectural constraints."
+acceptance = [
+  "[x] Every section of the TZ is mapped to existing code or marked missing",
+  "[x] Partly implemented components are named with what is missing",
+  "[x] Gaps are linked to roadmap ids",
+  "[x] Architectural constraints (AGENTS.md rules) are restated as constraints on the new work",
+]
+docs = ["docs/audit/2026-11-repository-audit.md"]
+
+[[item]]
+id = "TEC-082"
+name = "Roadmap as data"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "TEC-080"
+release = "REL-002"
+source = "TZ Phase 1, §5.2–§5.12"
+description = "Six roadmaps as TOML data with stable ids, hierarchy, statuses, priorities, links, a validator, generated views and metrics."
+docs = ["docs/roadmap-management.md", "docs/decisions/ADR-0001-roadmap-as-data.md"]
+
+[[item]]
+id = "TEC-083"
+name = "Data model and configuration"
+kind = "feature"
+status = "done"
+priority = "P0"
+parent = "TEC-082"
+source = "TZ 5.2–5.7"
+description = "roadmap/roadmap.toml declares the roadmaps; one file per roadmap; every metadata field of TZ 5.5."
+acceptance = [
+  "[x] Six roadmaps (PRD, TEC, LRN, RND, INF, REL) are declared in configuration; a new type needs no code change",
+  "[x] Program → Epic → Feature → Task → Subtask with a parent for every non-program item",
+  "[x] Statuses and priorities of TZ 5.6–5.7; research items use hypothesis and accept/reject criteria",
+  "[x] Ids keep their prefix when an item moves to another roadmap file",
+]
+components = ["crates/est-roadmap/src/lib.rs", "roadmap/roadmap.toml"]
+
+[[item]]
+id = "TEC-084"
+name = "Integrity validator"
+kind = "feature"
+status = "done"
+priority = "P0"
+parent = "TEC-082"
+source = "TZ 5.8, 5.9, 5.12"
+description = "Rules R01–R14: ids, required fields, parents, links, cycles, checklists, Done, status consistency, release planning, paths, values, releases, cross-roadmap sync."
+acceptance = [
+  "[x] Duplicate ids, broken links, wrong parents and dependency cycles are errors",
+  "[x] Done needs met criteria and closed dependencies; Blocked, Deferred and Cancelled need a reason",
+  "[x] An item implemented by a Done item cannot stay planned without a status_reason",
+  "[x] Each rule has a unit test",
+]
+components = ["crates/est-roadmap/src/validate.rs"]
+
+[[item]]
+id = "TEC-085"
+name = "Generated views and entry point"
+kind = "feature"
+status = "done"
+priority = "P0"
+parent = "TEC-082"
+source = "TZ §6, 5.9"
+description = "docs/roadmaps/*.md per roadmap with cross-roadmap links and live statuses; a generated summary block in ROADMAP.md."
+acceptance = [
+  "[x] Each item appears once in the data and everywhere else by reference",
+  "[x] cargo test --workspace fails when a view is out of date",
+]
+components = ["crates/est-roadmap/src/render.rs", "docs/roadmaps", "ROADMAP.md"]
+
+[[item]]
+id = "TEC-086"
+name = "Metrics without fictitious progress"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "TEC-082"
+source = "TZ §7"
+description = "Progress weighted by estimates and met acceptance criteria; blocked, overdue, debt, releases and planned versus actual effort."
+acceptance = [
+  "[x] Progress is not a count of closed items (unit test)",
+  "[x] Overdue items are computed against today's date by the CLI",
+]
+components = ["crates/est-roadmap/src/metrics.rs", "docs/roadmaps/metrics.md"]
+
+[[item]]
+id = "TEC-087"
+name = "Schema, export and dependency graph"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "TEC-082"
+source = "TZ §8 (3, 7)"
+description = "JSON Schema of the data, JSON export, Mermaid and Graphviz dependency graphs."
+acceptance = [
+  "[x] docs/schemas/roadmap-schema.json describes the data and a test keeps its enums in sync with the code",
+  "[x] est-roadmap export prints configuration, items and findings as JSON",
+  "[x] docs/roadmaps/dependencies.md draws open dependencies and lists bottlenecks",
+]
+components = ["docs/schemas/roadmap-schema.json", "docs/roadmaps/dependencies.md", "crates/est-roadmap/src/main.rs"]
+
+[[item]]
+id = "TEC-090"
+name = "Roadmap automation"
+kind = "epic"
+status = "proposed"
+priority = "P2"
+parent = "TEC-080"
+source = "TZ 5.10, 5.11"
+description = "Next steps for the roadmap tooling."
+
+[[item]]
+id = "TEC-091"
+name = "Match roadmap items with repository state"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "TEC-090"
+description = """
+Report commits that mention an id (`Refs PRD-032`) and components changed since an item \
+started. Presence of code is shown as a signal only — never as completion."""
+
+[[item]]
+id = "TEC-092"
+name = "Change-management check"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "TEC-090"
+description = "`est-roadmap check --since <rev>` flags changes of status, priority, release or dependencies of epics and programs without a `changes` entry."

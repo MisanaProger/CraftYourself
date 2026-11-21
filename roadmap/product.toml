@@ -1,0 +1,685 @@
+# Product Roadmap — what the learner gets. Rules: docs/roadmap-management.md.
+
+# ---------------------------------------------------------------------------
+# PRD-001 — the shipped core (stages 0–9 of spec v0.3), inventoried by the
+# repository audit (docs/audit/2026-11-repository-audit.md).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "PRD-001"
+name = "Core learning loop"
+kind = "program"
+status = "in-progress"
+priority = "P0"
+source = "spec v0.3 §24, §30"
+description = """
+A local-first trainer: the learner works on real Issues and problems in their own IDE, a \
+mentor helps within an engagement level the learner consented to, and the platform assesses \
+dependence on AI (ADI) and engineering skills (Skill Matrix) from observed events only. \
+Stages 0–7 and 9 are shipped; stage 8 (interactive learning) and the desktop app are partly done."""
+docs = ["docs/architecture.md", "README.md"]
+
+[[item]]
+id = "PRD-002"
+name = "Projects and per-Issue workspaces"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stage 1"
+description = "Local and remote repositories, detected languages and license, a workspace and branch per Issue, opening the external IDE, Git status and diff."
+acceptance = [
+  "[x] A project is added from a local path or a remote URL and its languages and license are detected",
+  "[x] Starting a task creates ~/.est/workspaces/<project>/<task> and the branch est/<task>",
+  "[x] The session shows Git status and the diff against the base",
+]
+components = ["crates/est-projects", "crates/est-workspace", "crates/est-git", "frontend/src/project", "frontend/src/workspace"]
+
+[[item]]
+id = "PRD-003"
+name = "Tasks, Issues and online-judge problems"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stage 3"
+description = """
+Tasks with statuses, sessions and acceptance criteria; Exercise Manifests; LeetCode and \
+Codeforces problems with samples run in the sandbox; GitHub/GitLab Issues imported after a \
+fixed-rule suitability check; discovery of Issues and problems planned by a model and run by code."""
+acceptance = [
+  "[x] Exercise Manifests are imported and validated (est-exercises)",
+  "[x] Problems are imported from pasted input or loaded from the judge with the learner's network permission",
+  "[x] Issues are imported only after the suitability rules; re-import returns the same task",
+  "[x] Discovery validates the model's search plan; candidates come only from search results",
+]
+components = ["crates/est-exercises", "crates/est-problems", "crates/est-issues", "crates/est-remote", "crates/est-application/src/discovery.rs", "frontend/src/issue", "frontend/src/problems", "frontend/src/discovery"]
+docs = ["docs/architecture.md"]
+
+[[item]]
+id = "PRD-004"
+name = "Chat-first mentor with engagement levels"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stages 4–5"
+description = """
+Conversations with cards and streaming answers; engagement levels L0–L4 decided in code, \
+one-step escalation with explicit consent, the documentation boundary, code limits, several \
+LLM providers switchable from the UI."""
+implements = ["LRN-002"]
+acceptance = [
+  "[x] Every new Issue starts at L0; escalation is one step and needs accept or the learner's own raise",
+  "[x] The required level is decided by deterministic rules before any model call",
+  "[x] Streaming shows prose only; code is withheld until the policy check of the whole answer",
+]
+components = ["crates/est-ai-policy", "crates/est-ai", "crates/est-application/src/conversation.rs", "crates/est-application/src/streaming.rs", "frontend/src/chat", "frontend/src/escalation"]
+
+[[item]]
+id = "PRD-005"
+name = "Learning history: summaries, knowledge profile, recommendations"
+kind = "epic"
+status = "done"
+priority = "P1"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stage 6"
+description = "Session Summaries written in code, a Knowledge Profile by discipline, tag and task type, and model recommendations validated against an activity snapshot the learner can inspect."
+implements = ["LRN-006"]
+acceptance = [
+  "[x] A session summary is written when a session ends, with counters and ids only",
+  "[x] GET /recommendations/activity shows the learner what the model will receive",
+  "[x] Recommendations reference only programs and Issues from the snapshot",
+]
+components = ["crates/est-domain/src/knowledge.rs", "crates/est-application/src/knowledge.rs", "crates/est-application/src/recommendations.rs", "frontend/src/analytics/KnowledgePage.tsx"]
+
+[[item]]
+id = "PRD-006"
+name = "ADI and Skill Matrix"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stage 7"
+description = "The learner sees their AI Dependency Index per Issue and over time, and a Skill Matrix assessed from evidence with status, confidence, dimensions and history."
+implements = ["LRN-003", "LRN-004", "LRN-005"]
+acceptance = [
+  "[x] ADI and the Skill Matrix are computed independently and from observed events only",
+  "[x] A skill without evidence is not_assessed, never zero",
+  "[x] A model may explain an Issue's ADI but cannot change the number",
+]
+components = ["frontend/src/analytics/AdiPage.tsx", "frontend/src/analytics/SkillMatrixPage.tsx", "crates/est-application/src/analytics.rs"]
+
+[[item]]
+id = "PRD-007"
+name = "Interactive learning"
+kind = "epic"
+status = "in-progress"
+priority = "P1"
+parent = "PRD-001"
+source = "spec v0.3 stage 8"
+description = """
+Programs with lessons, quizzes checked on the server, sandboxed artifacts and practice \
+projects; programs generated on request; LaTeX and isolated HTML pages. One built-in program \
+is available, six are marked “coming soon”."""
+components = ["crates/est-learning", "learning-artifacts", "frontend/src/learning"]
+
+[[item]]
+id = "PRD-008"
+name = "Testing program"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "PRD-007"
+release = "REL-001"
+description = "The first built-in program: lessons, quizzes, artifacts and a practice project."
+acceptance = [
+  "[x] Lessons exist in ru, en and uz; quizzes are graded on the server",
+  "[x] cargo test -p est-learning checks the content's consistency",
+]
+components = ["learning-artifacts/programs/testing", "learning-artifacts/catalog.toml"]
+
+[[item]]
+id = "PRD-009"
+name = "Programs generated on request"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "PRD-007"
+release = "REL-001"
+description = "The model writes a plan and lessons (readings, HTML5 pages, quizzes); code validates every part and assigns ids."
+acceptance = [
+  "[x] An invalid answer is retried once with the reason, then the generation fails",
+  "[x] Generated HTML pages are served isolated (CSP sandbox allow-scripts)",
+]
+components = ["crates/est-application/src/generation.rs", "crates/est-learning/src/generated.rs", "migrations/0004_generated_programs.sql"]
+
+[[item]]
+id = "PRD-010"
+name = "Program: Git — commits and pull requests"
+kind = "feature"
+status = "planned"
+priority = "P1"
+parent = "PRD-007"
+release = "REL-002"
+description = "Atomic commits, messages following the project's conventions, conflicts, preparing a PR — using the commit review of stage 9 as the trainer."
+acceptance = [
+  "[ ] The tile is available in learning-artifacts/catalog.toml with lessons in ru, en and uz",
+  "[ ] Lessons name skills git/* so results become Skill Matrix evidence",
+  "[ ] The practice project is checked by the commit review rules",
+]
+components = ["learning-artifacts/catalog.toml"]
+
+[[item]]
+id = "PRD-011"
+name = "Program: Debugging — hypotheses and reproduction"
+kind = "feature"
+status = "planned"
+priority = "P1"
+parent = "PRD-007"
+release = "REL-002"
+description = "Minimal reproducible example, a hypothesis log, debugger walkthroughs."
+
+[[item]]
+id = "PRD-012"
+name = "Program: Reading unfamiliar code"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+description = "Entry points, code search, module maps on a real project."
+
+[[item]]
+id = "PRD-013"
+name = "Program: Working with documentation"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+description = "API references, versions, source as documentation."
+
+[[item]]
+id = "PRD-014"
+name = "Program: Data structures, visualised"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+description = "Hash tables, segment and Fenwick trees as interactive artifacts with exercises."
+
+[[item]]
+id = "PRD-015"
+name = "Program: Issue engineering"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+description = "Bug reports and feature requests with the quality checklist of stage 9."
+
+[[item]]
+id = "PRD-016"
+name = "Testing program, part 2"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+related_to = ["INF-020"]
+description = "Property-based testing (the globset exercise), test doubles, flaky tests."
+
+[[item]]
+id = "PRD-017"
+name = "Generated programs: editing and practice"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-007"
+related_to = ["TEC-065"]
+description = "Regenerate or edit a single lesson, practice projects with a sandboxed test, Skill Matrix disciplines for generated content, streaming progress per lesson."
+
+[[item]]
+id = "PRD-018"
+name = "Git workflow and analytics"
+kind = "epic"
+status = "done"
+priority = "P1"
+parent = "PRD-001"
+release = "REL-001"
+source = "spec v0.3 stage 9"
+description = "Commit review against general rules and the project's own conventions, PR drafts from observed data, publishing PRs and Issues through the publish gate, the Issue text checklist."
+acceptance = [
+  "[x] Commit review learns conventions from up to 200 commits of history before the base",
+  "[x] Publishing goes through a confirmed draft; the mentor can never publish",
+  "[x] Commit quality enters the session summary and the Skill Matrix (git/commits)",
+]
+components = ["crates/est-review", "crates/est-application/src/git_workflow.rs", "frontend/src/git"]
+
+[[item]]
+id = "PRD-019"
+name = "Desktop app"
+kind = "epic"
+status = "in-progress"
+priority = "P1"
+parent = "PRD-001"
+description = "Tauri 2 window running the daemon in-process on a loopback port; the same HTTP API as the browser build, no Tauri IPC."
+components = ["apps/desktop"]
+
+[[item]]
+id = "PRD-020"
+name = "Desktop window with the embedded daemon"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "PRD-019"
+release = "REL-001"
+description = "The desktop build serves the embedded frontend from the in-process daemon."
+acceptance = [
+  "[x] cargo run --manifest-path apps/desktop/Cargo.toml opens the app on Linux",
+  "[x] No Tauri IPC is exposed; features go through /api/v1",
+]
+components = ["apps/desktop"]
+
+[[item]]
+id = "PRD-021"
+name = "Installers, auto-update and tray"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-019"
+depends_on = ["INF-004"]
+description = "Signed installers for Linux, Windows and macOS, auto-update and a tray icon."
+
+[[item]]
+id = "PRD-022"
+name = "Practice sources: next improvements"
+kind = "epic"
+status = "proposed"
+priority = "P2"
+parent = "PRD-001"
+description = "Improvements to problems, discovery, imported Issues and the Git workflow collected in the former ROADMAP.md “Next” list."
+
+[[item]]
+id = "PRD-023"
+name = "Problems: generated harnesses and more judges"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+description = "LeetCode examples as generated test harnesses, more languages, statements from AtCoder and leetcode.cn."
+
+[[item]]
+id = "PRD-024"
+name = "Discovery: GitLab, skipped suggestions, ranking"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+depends_on = ["TEC-024"]
+description = "GitLab search, remembering suggestions the learner skipped, ranking candidates with the Skill Matrix and the competency graph after the search."
+
+[[item]]
+id = "PRD-025"
+name = "Imported Issues: follow upstream"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+description = "Notice when the upstream Issue is closed, commented or assigned; GitHub Enterprise; a fork-and-branch helper."
+
+[[item]]
+id = "PRD-026"
+name = "Localized exercise manifests"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+description = "Title, description and criteria of an Exercise Manifest in ru, en and uz."
+
+[[item]]
+id = "PRD-027"
+name = "Git workflow: mentor review and trends"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+description = "Commit review by the mentor at the current level, a trend of commit quality over time, GitLab merge requests from forks."
+
+[[item]]
+id = "PRD-028"
+name = "Name skills when creating a task"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-022"
+description = "The task form offers catalog skills (discipline/skill) instead of relying on inference from tags."
+
+[[item]]
+id = "PRD-029"
+name = "VS Code / VSCodium extension"
+kind = "feature"
+status = "proposed"
+priority = "P3"
+parent = "PRD-022"
+description = "Optional editor extension that talks to the same local API."
+
+[[item]]
+id = "PRD-051"
+name = "Open decisions of spec v0.3"
+kind = "epic"
+status = "planned"
+priority = "P1"
+parent = "PRD-001"
+source = "spec v0.3 §29"
+description = """
+Decisions the specification leaves open. The numeric ones (ADI coefficients, T_t/T_n, the \
+stable ADI threshold, ESM weights) are experiments in RND-002."""
+related_to = ["RND-002"]
+
+[[item]]
+id = "PRD-052"
+name = "Project license"
+kind = "task"
+status = "planned"
+priority = "P1"
+parent = "PRD-051"
+release = "REL-001"
+description = "The repository contains GPL-3.0 (LICENSE, workspace license GPL-3.0-or-later); confirm or change it before the first public release."
+acceptance = ["[ ] The decision is recorded as an ADR and LICENSE, Cargo.toml and the READMEs agree"]
+
+[[item]]
+id = "PRD-053"
+name = "LLM providers to ship first"
+kind = "task"
+status = "planned"
+priority = "P2"
+parent = "PRD-051"
+release = "REL-001"
+description = "Which providers and presets are documented and tested for the first release (all OpenAI-compatible, OpenAI and Claude already work)."
+
+[[item]]
+id = "PRD-054"
+name = "Sandbox system requirements"
+kind = "task"
+status = "planned"
+priority = "P1"
+parent = "PRD-051"
+release = "REL-001"
+related_to = ["INF-014"]
+description = "Supported Docker/Podman versions, rootless mode, disk and memory needs, Windows/macOS notes in the READMEs."
+
+[[item]]
+id = "PRD-055"
+name = "Disciplines in the first release"
+kind = "task"
+status = "planned"
+priority = "P2"
+parent = "PRD-051"
+release = "REL-001"
+description = "Which of the ten catalog disciplines are presented as supported, given that only the Testing program is available."
+
+# ---------------------------------------------------------------------------
+# PRD-030 — Evidence-based learning platform (Functional Expansion TZ).
+# ---------------------------------------------------------------------------
+
+[[item]]
+id = "PRD-030"
+name = "Evidence-based learning platform"
+kind = "program"
+status = "planned"
+priority = "P0"
+source = "TZ Functional Expansion §1.2"
+description = """
+CraftYourself assesses real engineering competence and how it develops over time: every \
+assessment has observable grounds the learner can inspect, knowledge is re-checked, gaps and \
+systematic errors shape the next Issues, and the learner's independence and ability to \
+transfer knowledge are measured rather than assumed."""
+docs = ["docs/audit/2026-11-repository-audit.md"]
+
+[[item]]
+id = "PRD-031"
+name = "Transparent assessment"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "PRD-030"
+release = "REL-002"
+source = "TZ 2.1, 2.5, 4.4"
+description = "The learner can see why every assessment and recommendation is what it is: which actions, evidence, rule versions and models produced it."
+docs = ["docs/specifications/evidence-assessment.md"]
+
+[[item]]
+id = "PRD-032"
+name = "Why this assessment: evidence view"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "PRD-031"
+risk = "medium"
+source = "TZ 2.1 (acceptance), 4.4"
+description = "For every skill and discipline of the Skill Matrix, a list of the evidence behind it: type, Issue or lesson, date, help level, check result, reliability, rule version and a link to the source context."
+acceptance = [
+  "[ ] Every score in the Skill Matrix links to the evidence records it was computed from",
+  "[ ] Each record shows type, source, date, help level, check result, reliability and rule version",
+  "[ ] Supported and independent work are visibly distinguished",
+  "[ ] The computation (rule id and inputs) is shown and reproduces the displayed score",
+  "[ ] All strings exist in en, ru and uz",
+]
+docs = ["docs/specifications/evidence-assessment.md"]
+
+[[item]]
+id = "PRD-033"
+name = "Recommendation and trajectory rationale"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "PRD-031"
+release = "REL-003"
+depends_on = ["TEC-043"]
+source = "TZ 2.5 (requirements)"
+description = "Each recommendation and each change of the learning path shows its grounds; the history of changes can be browsed."
+acceptance = [
+  "[ ] Every recommendation lists the evidence, gaps or retention signals that caused it",
+  "[ ] Every change of the learning path is listed with date, reason and rule version",
+]
+docs = ["docs/specifications/adaptive-learning.md"]
+
+[[item]]
+id = "PRD-034"
+name = "Learning profile and goals"
+kind = "epic"
+status = "proposed"
+priority = "P2"
+parent = "PRD-030"
+release = "REL-006"
+source = "TZ 4.1, 4.2"
+description = "An extended learning profile and learner-defined goals compared with actual progress."
+
+[[item]]
+id = "PRD-035"
+name = "Extended learning profile"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "PRD-034"
+depends_on = ["TEC-014"]
+source = "TZ 4.1"
+description = """
+One page with goals, current competencies, learning history, individual settings, preferred \
+directions and control results. Builds on the existing Knowledge Profile and Skill Matrix \
+rather than duplicating them."""
+
+[[item]]
+id = "PRD-036"
+name = "Goal management"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-034"
+depends_on = ["TEC-022"]
+source = "TZ 4.2"
+description = "Target discipline, desired competency level, expected date, milestones and success criteria; progress is compared with the goal from evidence."
+
+[[item]]
+id = "PRD-037"
+name = "Reflection, confidence and journal"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "PRD-030"
+release = "REL-004"
+source = "TZ 2.9, 2.10, 2.11"
+description = "The learner reflects on selected Issues, states confidence before control tasks and keeps a chronological learning journal."
+
+[[item]]
+id = "PRD-038"
+name = "Reflection stage"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "PRD-037"
+depends_on = ["TEC-046"]
+source = "TZ 2.9"
+description = "After selected Issues the learner answers: the hardest stage, causes of early errors, why this approach, alternatives, what was learned, where to apply it."
+
+[[item]]
+id = "PRD-039"
+name = "Learning journal"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-037"
+depends_on = ["TEC-048"]
+source = "TZ 2.10"
+description = "Chronological journal of mastered competencies, characteristic errors, overcome difficulties, strategy changes, re-checks, help usage and achievements, filtered by discipline and skill."
+
+[[item]]
+id = "PRD-040"
+name = "Confidence before control tasks"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "PRD-037"
+depends_on = ["TEC-047"]
+source = "TZ 2.11"
+description = "Before a control task the learner states their confidence; afterwards they see it next to the result and the calibration trend."
+
+[[item]]
+id = "PRD-041"
+name = "Personal learning path"
+kind = "epic"
+status = "proposed"
+priority = "P0"
+parent = "PRD-030"
+release = "REL-003"
+source = "TZ 2.3, 2.5"
+description = "What to do next and why: the next Issues from gaps and bottlenecks, and due reviews of skills that may be fading."
+docs = ["docs/specifications/adaptive-learning.md", "docs/specifications/retention-engine.md"]
+
+[[item]]
+id = "PRD-042"
+name = "Learning path view"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "PRD-041"
+depends_on = ["TEC-042", "TEC-043"]
+description = "Ranked next steps (Issues, problems, lessons) each with its reason, unmet prerequisites and bottleneck skills."
+
+[[item]]
+id = "PRD-043"
+name = "Review queue"
+kind = "feature"
+status = "proposed"
+priority = "P0"
+parent = "PRD-041"
+depends_on = ["TEC-044"]
+description = "Skills due for a re-check with the reason (time, intervening work, forgetting signals) and a control Issue to take."
+
+[[item]]
+id = "PRD-044"
+name = "Data control"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "PRD-030"
+source = "TZ 4.3, 4.5"
+description = "The learner sees, exports and deletes what is stored about them and decides whether history is used for analytics."
+
+[[item]]
+id = "PRD-045"
+name = "Structured progress export"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "PRD-044"
+release = "REL-006"
+depends_on = ["TEC-018"]
+source = "TZ 4.3"
+description = """
+Export of competencies, evidence with provenance and Issue history in a documented format. \
+The current full JSON export (craft-yourself-export/1) stays; this adds a structured, \
+versioned learning record."""
+
+[[item]]
+id = "PRD-046"
+name = "Privacy controls"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "PRD-044"
+release = "REL-001"
+source = "TZ 4.5"
+description = """
+View stored information, delete all learner data, manage learning history and switch \
+the use of history for analytics on or off. Today only per-conversation deletion and a \
+read-only privacy page exist."""
+acceptance = [
+  "[ ] Settings → Privacy lists what is stored, by category, with counts",
+  "[ ] Delete all data removes every learner table and ~/.est secrets after an explicit confirmation",
+  "[ ] Turning analytics off stops recommendations, discovery and the knowledge profile from reading history",
+  "[ ] The switch is stored and reported by GET /settings/privacy",
+]
+docs = ["docs/specifications/evidence-assessment.md#privacy"]
+
+[[item]]
+id = "PRD-047"
+name = "Platform expansion"
+kind = "epic"
+status = "proposed"
+priority = "P3"
+parent = "PRD-030"
+release = "REL-006"
+source = "TZ Phase 6"
+description = "Preparation for scaling beyond the Local Edition."
+
+[[item]]
+id = "PRD-048"
+name = "Collaborative learning"
+kind = "feature"
+status = "proposed"
+priority = "P3"
+parent = "PRD-047"
+description = "Mentors and peers reviewing a learner's work; requires accounts (Cloud Edition)."
+
+[[item]]
+id = "PRD-049"
+name = "Offline progress queue"
+kind = "feature"
+status = "proposed"
+priority = "P3"
+parent = "PRD-047"
+description = "Queue progress made offline for a later sync; only meaningful once a Cloud Edition exists."
+
+[[item]]
+id = "PRD-050"
+name = "Cloud Edition"
+kind = "feature"
+status = "deferred"
+priority = "P3"
+parent = "PRD-047"
+status_reason = "Out of MVP scope (spec v0.3): the Local Edition comes first."
+description = "Accounts, remote sandboxes, groups."

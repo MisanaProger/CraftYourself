@@ -1,0 +1,82 @@
+# Roadmap Management configuration — the single source of truth for the
+# project's plan. Rules and workflow: docs/roadmap-management.md.
+#
+# Edit the data files listed below, then:
+#   cargo run -p est-roadmap -- check
+#   cargo run -p est-roadmap -- render
+# `cargo test --workspace` fails if the data has errors or a view is stale.
+
+version = 1
+default_owner = "MisanaProger"
+views_dir = "docs/roadmaps"
+summary_file = "ROADMAP.md"
+
+# Project-wide Definition of Done: applies to every item marked Done, in
+# addition to its acceptance criteria and its own `done_when`.
+definition_of_done = [
+  "Acceptance criteria are met and checked in the item",
+  "cargo test --workspace passes; cargo clippy --workspace --all-targets -- -D warnings is clean; cargo fmt --all",
+  "cd frontend && npm run build passes; new UI strings exist in en, ru and uz",
+  "User-visible flows have a test in crates/est-api/tests/learning_loop.rs (fake LLM, fake sandbox)",
+  "Migrations are append-only; no secrets in config, events, logs or exports",
+  "docs/architecture.md and the three READMEs describe the behaviour; an ADR records significant decisions",
+  "cargo run -p est-roadmap -- check reports no errors and the views are rendered",
+]
+
+[[roadmap]]
+id = "product"
+title = "Product Roadmap"
+prefix = "PRD"
+file = "product.toml"
+description = """
+What the learner gets: product goals, usage scenarios, user-facing features and the large \
+stages of the product. Technical work that delivers a product item links to it with `implements`."""
+
+[[roadmap]]
+id = "technical"
+title = "Technical Roadmap"
+prefix = "TEC"
+file = "technical.toml"
+description = """
+Architecture of the modular monolith: subsystems, components, architectural changes, \
+constraints and technical debt (tag `debt`)."""
+
+[[roadmap]]
+id = "learning"
+title = "Learning Roadmap"
+prefix = "LRN"
+file = "learning.toml"
+description = """
+Learning methodology: engagement mechanics, assessment models, the competency system, \
+adaptive algorithms and ways of checking knowledge. Every rule here is decided in code and \
+can be tested without a model (AGENTS.md, rules 1 and 7)."""
+
+[[roadmap]]
+id = "research"
+title = "Research Roadmap"
+prefix = "RND"
+file = "research.toml"
+hypothesis_driven = true
+description = """
+Hypotheses and experiments: calibrating the assessment models, comparing algorithms, \
+measuring effectiveness. Each experiment states its hypothesis and the criteria to accept \
+or reject it; nothing here is part of the MVP until a result moves it to another roadmap."""
+
+[[roadmap]]
+id = "infrastructure"
+title = "Infrastructure & Security Roadmap"
+prefix = "INF"
+file = "infrastructure.toml"
+description = """
+CI/CD, test infrastructure, the sandbox and engineering tools, security, data management, \
+backups, monitoring and performance."""
+
+[[roadmap]]
+id = "releases"
+title = "Release Roadmap"
+prefix = "REL"
+file = "releases.toml"
+description = """
+Versions of the product in the order they ship. Items join a release through their \
+`release` field; the scope tables below are computed from that, never kept by hand. A \
+release is Done only when everything in its scope is closed."""

@@ -1,0 +1,311 @@
+# Infrastructure & Security Roadmap — CI/CD, sandbox and engineering tools,
+# security, data management, operations. Rules: docs/roadmap-management.md.
+
+[[item]]
+id = "INF-001"
+name = "Build, test and release infrastructure"
+kind = "program"
+status = "in-progress"
+priority = "P0"
+description = "CI for the workspace, the frontend and the desktop app; release packaging."
+
+[[item]]
+id = "INF-002"
+name = "Continuous integration"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "INF-001"
+release = "REL-001"
+description = "GitHub Actions: rustfmt, clippy with -D warnings, workspace tests, frontend build, desktop clippy."
+acceptance = ["[x] Every push and pull request runs the rust, frontend and desktop jobs"]
+components = [".github/workflows/ci.yml"]
+
+[[item]]
+id = "INF-003"
+name = "Roadmap integrity in CI"
+kind = "feature"
+status = "done"
+priority = "P0"
+parent = "INF-002"
+source = "TZ 5.12, §8 (6)"
+description = "crates/est-roadmap/tests/repository.rs checks the repository's roadmap data and that the generated views are current, as part of cargo test --workspace."
+acceptance = [
+  "[x] A roadmap error fails cargo test --workspace",
+  "[x] A stale view fails cargo test --workspace with the command that fixes it",
+]
+components = ["crates/est-roadmap/tests/repository.rs"]
+
+[[item]]
+id = "INF-004"
+name = "Desktop distribution"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "INF-001"
+description = "Signed installers, auto-update channel, testing on Windows and macOS."
+
+[[item]]
+id = "INF-005"
+name = "Sandbox integration tests in CI"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-001"
+description = "Run EST_SANDBOX_IT=1 cargo test -p est-sandbox on a runner with Docker."
+
+[[item]]
+id = "INF-010"
+name = "Code execution and engineering tools"
+kind = "program"
+status = "in-progress"
+priority = "P1"
+source = "TZ §3, Phase 5"
+description = "The sandbox and the tools that check practical solutions."
+docs = ["docs/specifications/engineering-tools.md"]
+
+[[item]]
+id = "INF-011"
+name = "Code sandbox"
+kind = "epic"
+status = "in-progress"
+priority = "P1"
+parent = "INF-010"
+source = "TZ 3.1"
+description = "Isolated execution of learner code. The TZ 3.1 requirements are met by est-sandbox except stronger isolation options."
+
+[[item]]
+id = "INF-012"
+name = "Container sandbox with limits"
+kind = "feature"
+status = "done"
+priority = "P0"
+parent = "INF-011"
+release = "REL-001"
+source = "TZ 3.1, AGENTS.md rule 3"
+description = "Docker/Podman with --network none by default, --cap-drop ALL, --read-only, no-new-privileges, CPU/memory/pids/time limits, read-only workspace mount, test summaries."
+acceptance = [
+  "[x] Isolation, time and memory limits, file-system and network control, test runs and result collection (TZ 3.1)",
+  "[x] Network for a run needs the learner's explicit permission",
+  "[x] Untrusted code never runs on the host",
+]
+components = ["crates/est-sandbox", "crates/est-languages"]
+
+[[item]]
+id = "INF-013"
+name = "gVisor or Kata isolation option"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-011"
+description = "Optional stronger runtime for the same container flags."
+
+[[item]]
+id = "INF-014"
+name = "Image presets and a dependency-fetch step"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-011"
+description = "Per-language image presets and a manifest-declared step that fetches dependencies with permission before the offline run; Windows and macOS notes."
+
+[[item]]
+id = "INF-016"
+name = "Automated testing of solutions"
+kind = "epic"
+status = "in-progress"
+priority = "P1"
+parent = "INF-010"
+release = "REL-005"
+source = "TZ 3.2"
+description = "Prepared tests exist; edge cases, invalid input, stress tests and reference comparison do not."
+
+[[item]]
+id = "INF-017"
+name = "Prepared tests and sample runner"
+kind = "feature"
+status = "done"
+priority = "P1"
+parent = "INF-016"
+description = "Exercise Manifest test commands and run_samples.sh for judge problems, with parsed summaries."
+acceptance = ["[x] Sample and test runs are parsed into passed/failed summaries (est-languages/src/summary.rs)"]
+components = ["crates/est-languages/src/summary.rs", "crates/est-problems"]
+
+[[item]]
+id = "INF-018"
+name = "Hidden, edge-case, invalid-input and stress suites"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "INF-016"
+depends_on = ["INF-017"]
+description = "Manifest sections for test suites by kind, kept outside the learner's workspace until the run, like quiz answers."
+
+[[item]]
+id = "INF-019"
+name = "Reference implementation comparison"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "INF-016"
+depends_on = ["INF-018"]
+description = "Run the learner's and a reference solution on the same inputs and diff the outputs."
+
+[[item]]
+id = "INF-020"
+name = "Property-based testing harness"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-010"
+release = "REL-005"
+depends_on = ["INF-019"]
+source = "TZ 3.3"
+description = "Generated inputs checked against a naive implementation, e.g. a segment tree against an array on random query sequences."
+
+[[item]]
+id = "INF-021"
+name = "Complexity analysis"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-010"
+release = "REL-005"
+depends_on = ["INF-018"]
+source = "TZ 3.4"
+description = "Measured run time over growing inputs fitted against the declared complexity; the theoretical claim and the measurement are reported separately."
+
+[[item]]
+id = "INF-022"
+name = "Static analysis"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-010"
+release = "REL-005"
+source = "TZ 3.5"
+description = "clippy, ruff, clang-tidy, eslint inside the sandbox; findings mapped to potential errors, unsafe constructs, conventions and structure."
+
+[[item]]
+id = "INF-023"
+name = "Git integration of checks"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-010"
+release = "REL-005"
+depends_on = ["INF-017"]
+source = "TZ Phase 5"
+description = "Test, analysis and complexity results attached to the commit they ran on, next to the existing commit review."
+
+[[item]]
+id = "INF-030"
+name = "Security, data and operations"
+kind = "program"
+status = "in-progress"
+priority = "P0"
+description = "Security rules of AGENTS.md, data management and operations of the Local Edition."
+
+[[item]]
+id = "INF-031"
+name = "Security baseline"
+kind = "epic"
+status = "done"
+priority = "P0"
+parent = "INF-030"
+release = "REL-001"
+description = "Host/Origin guard, secrets only from the environment or 0600 key files, isolated artifacts and model pages, quiz answers kept on the server."
+acceptance = [
+  "[x] Learning artifacts and model HTML are served with CSP sandbox allow-scripts and shown in sandboxed iframes",
+  "[x] No secrets in config, events, messages, logs or exports",
+]
+components = ["crates/est-api/src/guard.rs", "crates/est-api/src/routes/isolated.rs", "frontend/src/ui/IsolatedFrame.tsx"]
+
+[[item]]
+id = "INF-032"
+name = "Data management"
+kind = "epic"
+status = "planned"
+priority = "P0"
+parent = "INF-030"
+source = "TZ 4.5, §5.2 E"
+description = "Deleting, switching and backing up the learner's data."
+
+[[item]]
+id = "INF-033"
+name = "Delete all learner data"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "INF-032"
+release = "REL-001"
+implements = ["PRD-046"]
+description = "One confirmed action removing every learner table, secrets and workspaces, through a JSON-body endpoint."
+acceptance = [
+  "[ ] DELETE-all requires a confirmation token returned by a preview call",
+  "[ ] After it, the export contains no learner data (test)",
+]
+
+[[item]]
+id = "INF-034"
+name = "Enforce the analytics switch"
+kind = "feature"
+status = "planned"
+priority = "P0"
+parent = "INF-032"
+release = "REL-001"
+implements = ["PRD-046"]
+tags = ["debt"]
+description = "PrivacySettings.history_analytics is hard-coded to true (est-application/src/analytics.rs); make it a stored setting that the recommendation, discovery and profile code honours."
+acceptance = [
+  "[ ] The setting persists across restarts",
+  "[ ] With it off, recommendations and discovery do not include history in the snapshot (test)",
+]
+components = ["crates/est-application/src/analytics.rs"]
+
+[[item]]
+id = "INF-035"
+name = "Backup and restore of ~/.est"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-032"
+description = "SQLite online backup of the database and configuration (secrets excluded) and a restore command."
+
+[[item]]
+id = "INF-036"
+name = "Access separation"
+kind = "feature"
+status = "deferred"
+priority = "P3"
+parent = "INF-032"
+status_reason = "The Local Edition has one implicit local user; separation of access matters with accounts (PRD-050)."
+description = "Roles and access rules for multi-user deployments."
+
+[[item]]
+id = "INF-037"
+name = "Observability and performance"
+kind = "epic"
+status = "proposed"
+priority = "P2"
+parent = "INF-030"
+description = "Local diagnostics and performance budgets."
+
+[[item]]
+id = "INF-038"
+name = "Performance budgets"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "INF-037"
+depends_on = ["TEC-014"]
+description = "Benchmarks for the Skill Matrix and graph queries over 10 000 evidence records; API latency budget on loopback."
+
+[[item]]
+id = "INF-039"
+name = "Diagnostics bundle"
+kind = "feature"
+status = "proposed"
+priority = "P3"
+parent = "INF-037"
+description = "A secret-free bundle of logs, versions and configuration for bug reports."

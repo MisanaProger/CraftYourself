@@ -1,0 +1,150 @@
+# Research Roadmap — hypotheses and experiments. Work items state a
+# hypothesis with accept_if / reject_if before they start, and a result when
+# done. Nothing here is part of the MVP until a result moves it elsewhere.
+#
+# Data: experiments use only the developer's own sessions or learners who
+# opted in (PRD-046); exports are anonymised aggregates.
+
+[[item]]
+id = "RND-001"
+name = "Calibration of the assessment models"
+kind = "program"
+status = "proposed"
+priority = "P1"
+source = "spec v0.3 §29 (open decisions)"
+description = "Open decisions of spec v0.3: the numbers in the ADI and the Skill Matrix were chosen, not measured."
+
+[[item]]
+id = "RND-002"
+name = "Open decisions of spec v0.3"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "RND-001"
+description = "ADI coefficients, the T_t/T_n calibration, the stable ADI threshold and ESM weights."
+
+[[item]]
+id = "RND-003"
+name = "ADI coefficients and decay calibration"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "RND-002"
+validates = ["LRN-003"]
+description = "Fit the factor weights and T_t/T_n of observed-0.2 against later unassisted performance."
+hypothesis = "Issues scored with high ADI are followed by lower unassisted performance on related control tasks than Issues with low ADI."
+accept_if = "Rank correlation between Issue ADI and the next unassisted control-task score on the same skills is ≤ −0.3 over at least 40 Issue pairs."
+reject_if = "|correlation| < 0.1, or the sign is reversed — then the factor weights are revisited before any recalibration."
+
+[[item]]
+id = "RND-004"
+name = "Threshold for a stable ADI status"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-002"
+validates = ["LRN-003"]
+description = "How many Issues make the aggregated ADI stable enough to show a game status without flapping."
+hypothesis = "After N Issues the aggregated ADI changes its game status at most once per 5 further Issues."
+accept_if = "An N ≤ 8 exists for which status flips stay ≤ 1 per 5 Issues in replayed histories."
+reject_if = "No N ≤ 15 satisfies it — the status bands are too narrow and must be redesigned."
+
+[[item]]
+id = "RND-005"
+name = "ESM source weights"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-002"
+validates = ["LRN-004"]
+description = "Whether practice and Issues should weigh ×2 against quizzes and trainers."
+hypothesis = "Practice and Issue evidence predicts later control-task results better than quiz evidence."
+accept_if = "Prediction error of the weighted score is lower than the unweighted one on held-out control tasks."
+reject_if = "The weighted score is not better than the unweighted one."
+
+[[item]]
+id = "RND-006"
+name = "Algorithms of the evidence-based platform"
+kind = "epic"
+status = "proposed"
+priority = "P1"
+parent = "RND-001"
+description = "Experiments that decide the parameters of the TZ's new algorithms before they become MVP rules."
+
+[[item]]
+id = "RND-007"
+name = "Independence estimation"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "RND-006"
+validates = ["LRN-012", "LRN-014"]
+description = "Which observed help signals (highest level, hints by stage, copied code, rejected escalations) best predict whether the learner can repeat the work alone."
+hypothesis = "A rule using the stage at which help was taken separates later independent success from failure better than the highest level alone."
+accept_if = "On replayed sessions the stage-aware rule improves balanced accuracy by ≥ 0.05 over highest-level-only."
+reject_if = "Improvement < 0.02 — keep the simpler highest-level rule."
+
+[[item]]
+id = "RND-008"
+name = "Retention: time versus interactions"
+kind = "feature"
+status = "proposed"
+priority = "P1"
+parent = "RND-006"
+validates = ["LRN-019"]
+description = "Relative weight of elapsed time and intervening learning interactions in forgetting."
+hypothesis = "Including the number of intervening Issues predicts re-check failure better than elapsed time alone."
+accept_if = "Log-loss of the two-factor model on re-check outcomes is lower than time-only by ≥ 5 %."
+reject_if = "No improvement — use time-only decay and drop the interaction factor."
+
+[[item]]
+id = "RND-009"
+name = "Misconception classification: rules versus model proposals"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-006"
+validates = ["LRN-030"]
+description = "Whether a model's proposed error class, accepted only when code-side evidence agrees, adds recall over rules alone."
+hypothesis = "Model proposals filtered by code checks find ≥ 20 % more confirmed misconceptions than rules alone at the same precision."
+accept_if = "Recall +20 % with precision within 5 points on a hand-labelled set of ≥ 100 failures."
+reject_if = "Precision drops by more than 5 points — rules only."
+
+[[item]]
+id = "RND-010"
+name = "Validity of transfer tasks"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-006"
+validates = ["LRN-034"]
+description = "Do changed-context tasks distinguish understanding from reproduction?"
+hypothesis = "Learners who solved the original only with L3+ help fail changed-context tasks more often than those who solved it at L0–L1."
+accept_if = "Failure rate differs by ≥ 25 points between the groups."
+reject_if = "Difference < 10 points — the task generator does not change context enough."
+
+[[item]]
+id = "RND-011"
+name = "Confidence calibration metric"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-006"
+validates = ["LRN-033"]
+description = "Which metric (Brier score, signed over/under-confidence) is stable and understandable for the learner."
+hypothesis = "The signed calibration gap over the last 10 control tasks is stable (test–retest) and learners read it correctly."
+accept_if = "Split-half correlation ≥ 0.6 and ≥ 80 % correct interpretation in a short usability check."
+reject_if = "Either threshold missed — show raw confidence versus result only."
+
+[[item]]
+id = "RND-012"
+name = "Effect of adaptive difficulty"
+kind = "feature"
+status = "proposed"
+priority = "P2"
+parent = "RND-006"
+validates = ["LRN-023"]
+description = "Whether adaptive difficulty increases Issues completed without heavy help."
+hypothesis = "With adaptive difficulty the share of Issues completed at L0–L1 rises without a drop in completion rate."
+accept_if = "Share at L0–L1 +10 points, completion rate within −5 points, over 4 weeks of use."
+reject_if = "Completion rate drops by more than 5 points."

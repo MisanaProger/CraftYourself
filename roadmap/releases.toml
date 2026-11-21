@@ -1,0 +1,65 @@
+# Release Roadmap — versions in shipping order (the order of this file).
+# Scope comes from the items' `release` fields. Rules: docs/roadmap-management.md.
+
+[[item]]
+id = "REL-001"
+name = "Developer Preview"
+kind = "release"
+version = "0.1.0"
+status = "in-progress"
+description = """
+The first public release: the core learning loop of spec v0.3 (stages 0–7, 9 and the \
+shipped part of stage 8) and the desktop window on Linux. Privacy controls are in scope \
+because a public build must let the learner delete their data."""
+acceptance = [
+  "[ ] CI is green on the release commit",
+  "[ ] Privacy controls (PRD-046) are done",
+  "[ ] README.md, README.ru.md and README.uz.md describe installation and first steps",
+  "[ ] The commit is tagged v0.1.0 and release notes list the scope below",
+]
+
+[[item]]
+id = "REL-002"
+name = "Assessment Foundation"
+kind = "release"
+version = "0.2.0"
+status = "planned"
+description = """
+TZ Phases 0–2: the roadmap system, the evidence ledger with provenance and versioned rules, \
+the competency graph and the extended Issue lifecycle; the Git and Debugging programs."""
+acceptance = [
+  "[ ] Every Skill Matrix score can be explained by stored evidence and reproduced by its rule version",
+  "[ ] Existing assessments are unchanged after the backfill (TEC-015)",
+]
+
+[[item]]
+id = "REL-003"
+name = "Adaptive Learning"
+kind = "release"
+version = "0.3.0"
+status = "proposed"
+description = "TZ Phase 3: retention, adaptive difficulty, hint budget, learning path, bottlenecks, misconception detection."
+
+[[item]]
+id = "REL-004"
+name = "Learning Analytics"
+kind = "release"
+version = "0.4.0"
+status = "proposed"
+description = "TZ Phase 4: transfer assessment, confidence calibration, reflection, solution comparison, learning journal."
+
+[[item]]
+id = "REL-005"
+name = "Engineering Environment"
+kind = "release"
+version = "0.5.0"
+status = "proposed"
+description = "TZ Phase 5: automated test suites, property-based testing, complexity and static analysis, Git integration of checks."
+
+[[item]]
+id = "REL-006"
+name = "Platform Expansion"
+kind = "release"
+version = "0.6.0"
+status = "proposed"
+description = "TZ Phase 6: goals, structured export, preparation for collaborative learning and a Cloud Edition."

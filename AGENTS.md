@@ -3,7 +3,8 @@
 Guidance for AI coding agents (and humans) working in this repository.
 Product: **Craft Yourself** — a local-first trainer for engineering skills.
 Internal names keep the `est` prefix (crates `est-*`, binary `est`, `~/.est`).
-The specification is `docs/architecture.md` (spec v0.3); the plan is `ROADMAP.md`.
+The specification is `docs/architecture.md` (spec v0.3); the plan is data in
+`roadmap/*.toml` with `ROADMAP.md` as its entry point (`docs/roadmap-management.md`).
 
 ## Layout
 
@@ -31,6 +32,8 @@ crates/
   est-ai             LLM providers (OpenAI-compatible, OpenAI, Claude) + presets
   est-api            Axum REST /api/v1, WebSocket, composition root (runtime.rs)
   est-cli            `est` binary
+  est-roadmap        roadmap data model, integrity rules, generated views (dev tool,
+                     not part of the product; `est-roadmap` binary)
 apps/desktop/        Tauri 2 desktop app (separate workspace): runs the daemon
                      in-process on a loopback port and shows it in a window;
                      the frontend is embedded; no Tauri IPC is exposed
@@ -38,6 +41,9 @@ frontend/            React + TypeScript + Vite (src/i18n, chat, learning, …)
 learning-artifacts/  programs, lessons, quizzes, artifacts, practice templates
 exercises/examples/  Exercise Manifests
 migrations/          SQLx migrations (append-only)
+roadmap/             the plan as data (PRD/TEC/LRN/RND/INF/REL items)
+docs/roadmaps/       views generated from roadmap/ — never edit by hand
+docs/specifications/ specifications of planned subsystems; docs/decisions/ ADRs
 ```
 
 Dependencies point inwards: `est-domain` ← `est-application` ← adapters ←
@@ -53,6 +59,8 @@ cargo test --workspace                                  # must pass
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --all
 cd frontend && npm ci && npm run build                  # tsc + vite; must pass
+cargo run -p est-roadmap -- check                       # roadmap integrity
+cargo run -p est-roadmap -- render                      # after editing roadmap/*.toml
 EST_SANDBOX_IT=1 cargo test -p est-sandbox              # needs Docker/Podman
 cd apps/desktop && cargo clippy -- -D warnings          # needs WebKitGTK + built frontend
 ```
@@ -119,6 +127,11 @@ browser build keeps working.
   `crates/est-languages/src/adapters.rs`, register it in `LanguageRegistry`,
   add a sandbox image in `SandboxConfig::default()` and, if needed, a summary
   parser in `summary.rs`.
+- **Change the plan:** edit `roadmap/<roadmap>.toml` (never reuse or rename
+  an id; a moved item keeps its id), run `est-roadmap check` and `render`, and
+  commit the data with the regenerated views — `cargo test` fails otherwise.
+  Mark an item Done only when its `acceptance` entries are `[x]`. Reference
+  the id in the commit body (`Refs TEC-014`).
 - **Add an API endpoint:** use case in `est-application`, route in
   `est-api/src/routes/`, test in `learning_loop.rs`, client in
   `frontend/src/services/api.ts`.
@@ -127,4 +140,5 @@ browser build keeps working.
 
 `README.md` (English) is the main README; `README.ru.md` and `README.uz.md`
 are translations — update all three together. Architecture decisions go to
-`docs/architecture.md`; planned work to `ROADMAP.md`.
+`docs/architecture.md` (significant ones also as an ADR in `docs/decisions/`);
+planned work to `roadmap/*.toml` (see `docs/roadmap-management.md`).
