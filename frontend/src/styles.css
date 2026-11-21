@@ -531,3 +531,12 @@ a.button.small { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
 .issue-preview ul.goals { list-style: none; padding-left: 0; }
 .discovery-item > .stack { gap: 0.3rem; }
 .discovery-item p { margin: 0; }
+
+/* Git workflow: commit review, pull request, Issue writer, ADI explanation. */
+.review-list > li { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+.review-list .findings { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+.finding-problem { color: var(--danger); }
+.finding-warning { color: var(--warn); }
+.warn { color: var(--warn); }
+.adi-review { margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--border); }
+.adi-review p { margin: 0.2rem 0; }

@@ -192,6 +192,8 @@ export interface AdiHistoryItem {
   explanation: string;
   confidence: string;
   created_at: string;
+  /** A model's explanation; it never changes the score. */
+  review: { text: string; model: string; lang: string; created_at: string } | null;
 }
 
 export interface AdiOverview {
@@ -558,6 +560,7 @@ export interface SessionSummary {
   finished_at: string;
   duration_minutes: number;
   commits: number;
+  commit_quality?: number | null;
   help: {
     final_level: Level;
     max_level: Level;
@@ -720,4 +723,56 @@ export interface DiscoverRequest {
   problems: boolean;
   allow_network: boolean;
   lang: string;
+}
+
+// ---- Git workflow (stage 9) ---------------------------------------------------
+
+export interface ReviewFinding {
+  code: string;
+  severity: "info" | "warning" | "problem";
+  detail?: string;
+}
+
+export interface CommitReview {
+  hash: string;
+  subject: string;
+  lines_changed: number;
+  files: number;
+  score: number;
+  findings: ReviewFinding[];
+}
+
+export interface Conventions {
+  learned_from: number;
+  conventional: boolean;
+  capitalized: boolean | null;
+  period: boolean;
+  subject_limit: number;
+  signed_off: boolean;
+}
+
+export interface CommitsReview {
+  conventions: Conventions;
+  commits: CommitReview[];
+  score: number | null;
+}
+
+export interface PullRequestView {
+  title: string;
+  body: string;
+  readiness: { code: string; ok: boolean; detail?: string }[];
+  ready: boolean;
+  repository: { forge: "github" | "gitlab"; host: string; project: string } | null;
+  branch: string;
+  base: string | null;
+  can_publish: boolean;
+}
+
+export type IssueTextKind = "bug" | "feature";
+
+export interface IssueTextReview {
+  kind: IssueTextKind;
+  checks: { code: string; ok: boolean }[];
+  score: number;
+  blockers: ReviewFinding[];
 }

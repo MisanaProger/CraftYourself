@@ -1,5 +1,10 @@
 import type {
+  AdiHistoryItem,
   AdiOverview,
+  CommitsReview,
+  IssueTextKind,
+  IssueTextReview,
+  PullRequestView,
   CommandSpec,
   Conversation,
   ConversationView,
@@ -147,6 +152,15 @@ export const api = {
   deleteGeneratedProgram: (id: string) => send("DELETE", `/learning/generated/${encodeURIComponent(id)}`),
 
   adi: () => json<AdiOverview>("GET", "/analytics/adi"),
+  /** A model explains the ADI; the score stays the one code computed. */
+  explainAdi: (task: string, lang: string) => json<AdiHistoryItem>("POST", `/analytics/adi/${task}/explain`, { lang }),
+  reviewCommits: (session: string) => json<CommitsReview>("GET", `/sessions/${session}/commits/review`),
+  pullRequest: (session: string) => json<PullRequestView>("GET", `/sessions/${session}/pull-request`),
+  draftPullRequest: (session: string, req: { title: string; body: string; head: string; base: string }) =>
+    json<PublishPreview>("POST", `/sessions/${session}/pull-request/draft`, req),
+  reviewIssueText: (kind: IssueTextKind, title: string, body: string) => json<IssueTextReview>("POST", "/issues/review", { kind, title, body }),
+  draftNewIssue: (project: string, kind: IssueTextKind, title: string, body: string) =>
+    json<PublishPreview>("POST", `/projects/${project}/issues/draft`, { kind, title, body }),
   skillMatrix: (lang: string) => json<SkillMatrix>("GET", `/analytics/disciplines?${q(lang)}`),
   privacy: () => json<PrivacySettings>("GET", "/settings/privacy"),
   exportData: async () => (await send("POST", "/data/export", {})).blob(),

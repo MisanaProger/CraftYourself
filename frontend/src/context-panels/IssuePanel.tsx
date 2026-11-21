@@ -6,7 +6,8 @@ import { Markdown } from "../chat/Markdown";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { Criterion, LearningSession, PublishPreview, Task } from "../types/api";
-import { Badge, Empty, ErrorBox, shortId, tv } from "../ui";
+import { Badge, Empty, ErrorBox, shortId } from "../ui";
+import { PublishDraft, Published } from "../git/PublishDraft";
 
 /**
  * A comment on the task's Issue. Two steps, decided on the server: the
@@ -17,22 +18,26 @@ function IssueComment({ task }: { task: Task }) {
   const { t } = useT();
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState<PublishPreview | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
   const prepare = useMutation({ mutationFn: () => api.draftIssueComment(task.id, body), onSuccess: setDraft });
-  const publish = useMutation({
-    mutationFn: (d: PublishPreview) => api.confirmPublish(d.id, d.digest),
-    onSettled: () => setDraft(null),
-    onSuccess: () => setBody(""),
-  });
-  const discard = useMutation({ mutationFn: (d: PublishPreview) => api.discardDraft(d.id), onSettled: () => setDraft(null) });
   return (
     <section className="stack">
       <h3>{t("publish.title")}</h3>
-      {!draft ? (
+      {draft ? (
+        <PublishDraft
+          draft={draft}
+          onClose={() => setDraft(null)}
+          onPublished={(u) => {
+            setUrl(u);
+            setBody("");
+          }}
+        />
+      ) : (
         <form
           className="stack"
           onSubmit={(e) => {
             e.preventDefault();
-            publish.reset();
+            setUrl(null);
             prepare.mutate();
           }}
         >
@@ -44,37 +49,9 @@ function IssueComment({ task }: { task: Task }) {
           </div>
           <p className="hint">{t("publish.hint")}</p>
         </form>
-      ) : (
-        <div className="stack publish-draft">
-          <p className="small">{t("publish.target", { host: draft.host })}</p>
-          <a className="small" href={draft.target} target="_blank" rel="noreferrer noopener">
-            {draft.target}
-          </a>
-          <pre>{draft.body}</pre>
-          {draft.warnings.map((w) => (
-            <p key={w} className="small">
-              ! {tv(t, "publish.warning", w)}
-            </p>
-          ))}
-          <div className="row">
-            <button className="primary small" disabled={publish.isPending} onClick={() => publish.mutate(draft)}>
-              {t("publish.confirm")}
-            </button>
-            <button className="secondary small" disabled={discard.isPending} onClick={() => discard.mutate(draft)}>
-              {t("publish.discard")}
-            </button>
-          </div>
-        </div>
       )}
-      {publish.data && (
-        <p className="ok small">
-          {t("publish.done")}{" "}
-          <a href={publish.data.url} target="_blank" rel="noreferrer noopener">
-            ↗
-          </a>
-        </p>
-      )}
-      <ErrorBox error={prepare.error ?? publish.error ?? discard.error} />
+      <Published url={url} />
+      <ErrorBox error={prepare.error} />
     </section>
   );
 }

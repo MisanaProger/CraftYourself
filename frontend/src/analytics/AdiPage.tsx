@@ -1,7 +1,31 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AdiHistoryItem } from "../types/api";
 import { useT, type Key } from "../i18n";
 import { api } from "../services/api";
 import { Card, Empty, ErrorBox, PageTitle, tv, useFormat } from "../ui";
+
+/** A model's explanation; the score is the one code computed. */
+function Explanation({ h }: { h: AdiHistoryItem }) {
+  const { t, lang } = useT();
+  const qc = useQueryClient();
+  const explain = useMutation({ mutationFn: () => api.explainAdi(h.task_id, lang), onSuccess: () => qc.invalidateQueries({ queryKey: ["adi"] }) });
+  return (
+    <div className="stack">
+      {h.review && (
+        <blockquote className="adi-review">
+          <p className="small">{h.review.text}</p>
+          <p className="muted small">{t("adi.reviewBy", { model: h.review.model })}</p>
+        </blockquote>
+      )}
+      <div className="row">
+        <button className="secondary small" disabled={explain.isPending} onClick={() => explain.mutate()}>
+          {explain.isPending ? t("adi.explaining") : h.review ? t("adi.explainAgain") : t("adi.explain")}
+        </button>
+      </div>
+      <ErrorBox error={explain.error} />
+    </div>
+  );
+}
 
 export function AdiPage() {
   const { t } = useT();
@@ -69,6 +93,7 @@ export function AdiPage() {
                           ))}
                         </ul>
                       )}
+                      <Explanation h={h} />
                     </div>
                   </li>
                 ))}

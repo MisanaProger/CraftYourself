@@ -58,6 +58,12 @@ export function SessionSummaryView({ summary: s, heading = true }: { summary: Se
         )}
         <dt>{t("summary.commits")}</dt>
         <dd>{s.commits}</dd>
+        {s.commit_quality != null && (
+          <>
+            <dt>{t("summary.commitQuality")}</dt>
+            <dd>{s.commit_quality}/100</dd>
+          </>
+        )}
         {s.adi != null && (
           <>
             <dt>ADI</dt>
