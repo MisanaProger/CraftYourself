@@ -1,11 +1,22 @@
 import type {
+  AdiHistoryItem,
   AdiOverview,
+  CommitsReview,
+  IssueTextKind,
+  IssueTextReview,
+  PullRequestView,
   CommandSpec,
   Conversation,
   ConversationView,
   Criterion,
   GenerateProgram,
+  DiscoverRequest,
+  Discovery,
+  FetchedProblem,
+  ImportIssue,
   ImportProblem,
+  IssuePreview,
+  PublishPreview,
   KnowledgeProfile,
   ProblemSummary,
   RecommendationSet,
@@ -122,6 +133,17 @@ export const api = {
   startPractice: (p: string, l: string) => json<StartedSession>("POST", `/learning/programs/${p}/lessons/${l}/practice`, {}),
   problems: () => json<ProblemSummary[]>("GET", "/problems"),
   importProblem: (p: ImportProblem) => json<StartedSession>("POST", "/problems", p),
+  /** Reads the statement from the judge; `allow_network` is the learner's permission. */
+  fetchProblem: (url: string, allow_network: boolean) => json<FetchedProblem>("POST", "/problems/fetch", { url, allow_network }),
+  discovery: () => json<Discovery | null>("GET", "/discovery"),
+  /** The model plans searches; EST runs them on GitHub and the judges. */
+  discover: (req: DiscoverRequest) => json<Discovery>("POST", "/discovery", req),
+  previewIssue: (url: string, allow_network: boolean) => json<IssuePreview>("POST", "/issues/preview", { url, allow_network }),
+  importIssue: (req: ImportIssue) => json<Task>("POST", "/issues/import", req),
+  /** Prepares a comment on the task's Issue; nothing is published. */
+  draftIssueComment: (task: string, body: string) => json<PublishPreview>("POST", `/tasks/${task}/issue/comments`, { body }),
+  confirmPublish: (draft: string, digest: string) => json<{ url: string }>("POST", `/publish/drafts/${draft}/confirm`, { digest }),
+  discardDraft: (draft: string) => send("DELETE", `/publish/drafts/${draft}`).then(() => undefined),
   recommendations: () => json<RecommendationSet | null>("GET", "/recommendations"),
   recommend: (lang: string) => json<RecommendationSet>("POST", "/recommendations", { lang }),
   learningActivity: (lang: string) => json<unknown>("GET", `/recommendations/activity?${q(lang)}`),
@@ -130,6 +152,15 @@ export const api = {
   deleteGeneratedProgram: (id: string) => send("DELETE", `/learning/generated/${encodeURIComponent(id)}`),
 
   adi: () => json<AdiOverview>("GET", "/analytics/adi"),
+  /** A model explains the ADI; the score stays the one code computed. */
+  explainAdi: (task: string, lang: string) => json<AdiHistoryItem>("POST", `/analytics/adi/${task}/explain`, { lang }),
+  reviewCommits: (session: string) => json<CommitsReview>("GET", `/sessions/${session}/commits/review`),
+  pullRequest: (session: string) => json<PullRequestView>("GET", `/sessions/${session}/pull-request`),
+  draftPullRequest: (session: string, req: { title: string; body: string; head: string; base: string }) =>
+    json<PublishPreview>("POST", `/sessions/${session}/pull-request/draft`, req),
+  reviewIssueText: (kind: IssueTextKind, title: string, body: string) => json<IssueTextReview>("POST", "/issues/review", { kind, title, body }),
+  draftNewIssue: (project: string, kind: IssueTextKind, title: string, body: string) =>
+    json<PublishPreview>("POST", `/projects/${project}/issues/draft`, { kind, title, body }),
   skillMatrix: (lang: string) => json<SkillMatrix>("GET", `/analytics/disciplines?${q(lang)}`),
   privacy: () => json<PrivacySettings>("GET", "/settings/privacy"),
   exportData: async () => (await send("POST", "/data/export", {})).blob(),

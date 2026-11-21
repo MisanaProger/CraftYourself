@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { LearningSession } from "../types/api";
 import { Empty, ErrorBox, shortHash } from "../ui";
+import { CommitReviewSection, PullRequestSection } from "../git/Workflow";
 
 type Target = "base" | "worktree" | "staged";
 
@@ -41,6 +42,8 @@ export function GitPanel({ session }: { session: LearningSession | null }) {
       ) : (
         <Empty>{t("git.noCommits")}</Empty>
       )}
+      <CommitReviewSection sessionId={session.id} version={version} />
+      <PullRequestSection sessionId={session.id} version={version} />
       <h3>{t("git.uncommitted")}</h3>
       {o.data?.changes.length ? (
         <ul className="plain">

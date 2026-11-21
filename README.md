@@ -45,8 +45,9 @@ Interface concepts: [`docs/design/`](docs/design)
   statement and samples and pick Python, C++ or Rust: you get a workspace
   with a solution template, the samples run in the sandbox, and the mentor
   guides you through the statement, examples, idea, complexity and edge
-  cases — starting at L0, with questions instead of the answer. Nothing is
-  downloaded from the judge.
+  cases — starting at L0, with questions instead of the answer. With your
+  permission EST loads the statement, samples, tags and rating from
+  Codeforces or LeetCode itself; you review them before starting.
 - **Recommendations.** The connected model suggests next steps from your
   activity: programs to finish, Issues to continue, problems on Codeforces
   or LeetCode by topic and rating, programs to generate. It sees only
@@ -74,6 +75,25 @@ Interface concepts: [`docs/design/`](docs/design)
   network access or access to the app; the policy allows one page per answer
   from level L2 and removes pages below it. Animations, canvas, forms and
   in-page messages work; storage lasts while the page is open.
+- **Open-source Issues.** Paste a GitHub or GitLab Issue link and allow EST
+  to read it: fixed rules check whether it suits a learner (closed Issues,
+  pull requests, archived repositories and rejected labels are refused;
+  assignees, thin descriptions or long discussions are flagged; *good first
+  issue* and checklists count in its favour). The import connects the
+  repository and creates a task — type and difficulty from the labels, the
+  checklist as acceptance criteria — that starts at L0 like any other.
+- **Finding Issues and problems.** Say what you want to get better at
+  ("understand parsers and write better error messages") or leave it empty
+  and let the model choose from your activity. The model only plans the
+  searches — keywords, language, tags, rating — and EST runs them on GitHub,
+  Codeforces and LeetCode, checks every result with the same rules as the
+  import, leaves out what you already have and never takes a link from the
+  model. A suggestion opens in the usual import.
+- **Nothing leaves without your permission.** Reading from a forge or judge
+  needs a tick for that request; publishing (a comment on your Issue) is
+  always a draft first, showing exactly what goes where, and is sent only
+  when you confirm that draft. The mentor can do neither. Tokens come from
+  environment variables named in `[remote]` of `config.toml`.
 - **Projects and workspaces.** Connect a local Git repository (or clone a
   remote one); languages and license are detected; every Issue gets its own
   directory and branch in `~/.est/workspaces` and opens in your editor.
@@ -98,17 +118,28 @@ Interface concepts: [`docs/design/`](docs/design)
   computed from observed events and averaged with double decay (30 days /
   10 Issues). The Engineering Skill Matrix scores skills from observed
   evidence — quiz attempts, trainer results, completed practice and Issues
-  (tests, acceptance criteria, help levels) — with a status, confidence,
-  dimensions (theory, practice, diagnosis, independence) and the evidence
-  history. Reading is not evidence, and untested skills are *not assessed*,
-  never zero. The two are independent: the ADI is not an input.
+  (tests, acceptance criteria, help levels, commit quality) — with a status,
+  confidence, dimensions (theory, practice, diagnosis, transfer, independence)
+  and the evidence history. Issues count for the skills the task names, or for
+  skills inferred from problem tags and the task type; *transfer* means a
+  skill applied in a new context (a lesson, then a problem, then a real
+  project). The ADI also observes how much of your diff matches code the
+  mentor showed; a model can explain an Issue's score, but only code sets it.
+  Reading is not evidence, and untested skills are *not assessed*, never
+  zero. The two are independent: the ADI is not an input.
+- **Git workflow.** Your commits are reviewed against general rules and the
+  conventions of the project's own history (Conventional Commits, subject
+  length, sign-off…). A pull request draft is built from your commits,
+  acceptance criteria and the last test run, with a readiness checklist; you
+  push the branch, EST opens the pull request after you confirm the draft.
+  An Issue writer checks a bug report or feature request before you publish it.
 - **Desktop app (Tauri)** for Linux, Windows and macOS; the same interface also runs in a browser.
 - **Interface in Russian, English and Uzbek**; dark and light themes.
 - **Privacy.** Data stays local; export your whole history as JSON; delete a
   conversation together with its events and the Issue's ADI.
 
-Not yet: Session Summary and Knowledge Profile, loading problem statements from the judge, evidence-based skill
-assessment, commit and PR review, the other learning programs. See the
+Not yet: the other learning programs, signed desktop installers, following
+imported Issues upstream. See the
 [roadmap](ROADMAP.md).
 
 ## Quick start

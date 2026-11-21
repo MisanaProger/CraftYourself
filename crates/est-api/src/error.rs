@@ -20,6 +20,13 @@ impl IntoResponse for ApiError {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Invalid(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::PermissionRequired(m) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({ "error": m, "permission": "network" })),
+                )
+                    .into_response();
+            }
             AppError::Infrastructure(m) => {
                 tracing::error!("{m}");
                 StatusCode::INTERNAL_SERVER_ERROR

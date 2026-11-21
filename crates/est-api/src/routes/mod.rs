@@ -9,6 +9,8 @@ use crate::runtime::Runtime;
 
 mod analytics;
 mod conversations;
+mod discovery;
+mod git_workflow;
 mod isolated;
 mod knowledge;
 mod learning;
@@ -16,6 +18,7 @@ mod llm;
 mod problems;
 mod projects;
 mod recommendations;
+mod remote;
 mod sessions;
 mod tasks;
 
@@ -44,6 +47,23 @@ pub fn api() -> Router<Runtime> {
         .route("/sessions/{id}/diff", get(sessions::diff))
         .route("/sessions/{id}/events", get(sessions::events))
         .route("/sessions/{id}/summary", get(knowledge::session_summary))
+        .route(
+            "/sessions/{id}/commits/review",
+            get(git_workflow::review_commits),
+        )
+        .route(
+            "/sessions/{id}/pull-request",
+            get(git_workflow::pull_request),
+        )
+        .route(
+            "/sessions/{id}/pull-request/draft",
+            post(git_workflow::draft_pull_request),
+        )
+        .route("/issues/review", post(git_workflow::review_issue))
+        .route(
+            "/projects/{id}/issues/draft",
+            post(git_workflow::draft_issue),
+        )
         .route("/knowledge/profile", get(knowledge::profile))
         .route(
             "/sessions/{id}/workspace/open",
@@ -126,6 +146,19 @@ pub fn api() -> Router<Runtime> {
             get(learning::artifact_file),
         )
         .route("/problems", get(problems::list).post(problems::import))
+        .route("/problems/fetch", post(remote::fetch_problem))
+        .route(
+            "/discovery",
+            get(discovery::latest).post(discovery::discover),
+        )
+        .route("/issues/preview", post(remote::preview_issue))
+        .route("/issues/import", post(remote::import_issue))
+        .route("/tasks/{id}/issue/comments", post(remote::draft_comment))
+        .route(
+            "/publish/drafts/{id}",
+            axum::routing::delete(remote::discard),
+        )
+        .route("/publish/drafts/{id}/confirm", post(remote::confirm))
         .route(
             "/recommendations",
             get(recommendations::latest).post(recommendations::generate),
@@ -133,6 +166,10 @@ pub fn api() -> Router<Runtime> {
         .route("/recommendations/activity", get(recommendations::activity))
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))
+        .route(
+            "/analytics/adi/{task}/explain",
+            post(analytics::explain_adi),
+        )
         .route("/analytics/disciplines", get(analytics::disciplines))
         .route("/analytics/skills", get(analytics::skills))
         .route("/data/export", post(analytics::export))

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { DiscoveryPanel } from "../discovery/DiscoveryPanel";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { ImportProblem, ProblemLanguage, ProblemSummary, Sample } from "../types/api";
@@ -13,7 +14,8 @@ function ImportForm() {
   const { t, lang } = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [url, setUrl] = useState("");
+  const [params] = useSearchParams();
+  const [url, setUrl] = useState(params.get("url") ?? "");
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [samples, setSamples] = useState<Sample[]>([{ input: "", output: "" }]);
@@ -21,6 +23,26 @@ function ImportForm() {
   const [tags, setTags] = useState("");
   const [rating, setRating] = useState("");
   const [difficulty, setDifficulty] = useState<"" | "easy" | "medium" | "hard">("");
+  const [allow, setAllow] = useState(false);
+  let host = "";
+  try {
+    host = url.trim() ? new URL(url.trim()).host : "";
+  } catch {
+    host = "";
+  }
+  const fetchable = /^(www\.)?(codeforces\.com|leetcode\.com)$/.test(host);
+  // Fills the form with what the judge returned; the learner reviews it.
+  const load = useMutation({
+    mutationFn: () => api.fetchProblem(url.trim(), allow),
+    onSuccess: ({ input }) => {
+      if (input.title) setTitle(input.title);
+      if (input.statement) setStatement(input.statement);
+      if (input.samples.length) setSamples(input.samples);
+      if (input.tags.length) setTags(input.tags.join(", "));
+      if (input.rating) setRating(String(input.rating));
+      if (input.difficulty) setDifficulty(input.difficulty);
+    },
+  });
   const setSample = (i: number, s: Partial<Sample>) => setSamples((all) => all.map((x, k) => (k === i ? { ...x, ...s } : x)));
   const create = useMutation({
     mutationFn: () => {
@@ -54,9 +76,33 @@ function ImportForm() {
     >
       <label className="field">
         <span>{t("problems.url")}</span>
-        <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://codeforces.com/problemset/problem/4/A" />
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setAllow(false);
+            load.reset();
+          }}
+          placeholder="https://codeforces.com/problemset/problem/4/A"
+        />
         <span className="hint">{t("problems.urlHint")}</span>
       </label>
+      {fetchable && (
+        <div className="stack">
+          <label className="check">
+            <input type="checkbox" checked={allow} onChange={(e) => setAllow(e.target.checked)} />
+            <span>{t("remote.allow", { host })}</span>
+          </label>
+          <div className="row">
+            <button type="button" className="secondary small" disabled={!allow || load.isPending} onClick={() => load.mutate()}>
+              {load.isPending ? t("remote.reading") : t("problems.load")}
+            </button>
+            {load.data && <span className={load.data.statement_found ? "ok small" : "small"}>{load.data.statement_found ? t("problems.loaded") : t("problems.loadedPartly")}</span>}
+          </div>
+          <ErrorBox error={load.error} />
+        </div>
+      )}
       <label className="field">
         <span>{t("problems.titleField")}</span>
         <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
@@ -178,16 +224,23 @@ function ProblemList() {
 
 export function ProblemsPage() {
   const { t } = useT();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   return (
     <div className="page">
       <PageTitle sub={t("problems.subtitle")}>{t("problems.title")}</PageTitle>
       <div className="problems-layout">
         <Card title={t("problems.import")}>
-          <ImportForm />
+          <ImportForm key={params.get("url") ?? ""} />
         </Card>
-        <Card title={t("problems.list")}>
-          <ProblemList />
-        </Card>
+        <div className="stack">
+          <Card title={t("problems.list")}>
+            <ProblemList />
+          </Card>
+          <Card title={t("discovery.title")}>
+            <DiscoveryPanel issues={false} onPickIssue={(u) => navigate(`/tasks?issue=${encodeURIComponent(u)}`)} />
+          </Card>
+        </div>
       </div>
     </div>
   );

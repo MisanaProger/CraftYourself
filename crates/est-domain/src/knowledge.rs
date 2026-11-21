@@ -137,6 +137,9 @@ pub struct SessionSummary {
     pub criteria_done: u32,
     /// Final ADI of the Issue, for a completed session.
     pub adi: Option<u8>,
+    /// Commit review score of the learner's commits (stage 9), when any.
+    #[serde(default)]
+    pub commit_quality: Option<u8>,
     pub signals: Vec<Signal>,
     pub created_at: Timestamp,
 }
@@ -411,6 +414,7 @@ mod tests {
             criteria_total: 2,
             criteria_done: 2,
             adi: (outcome == SessionOutcome::Completed).then_some(20),
+            commit_quality: None,
             signals: vec![],
             created_at: now,
         };

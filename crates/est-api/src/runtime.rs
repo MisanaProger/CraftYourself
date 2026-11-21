@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use est_application::Ports;
-use est_application::ports::{EventPublisher, LlmProvider, LlmSlot, Sandbox};
+use est_application::ports::{EventPublisher, LlmProvider, LlmSlot, RemoteSources, Sandbox};
 use est_application::{App, AppSettings};
 use est_core::DomainEvent;
 use est_git::port::CliGit;
@@ -57,6 +57,19 @@ impl Runtime {
         llm: Option<Arc<dyn LlmProvider>>,
         sandbox: Arc<dyn Sandbox>,
     ) -> anyhow::Result<Self> {
+        let remote: Arc<dyn RemoteSources> =
+            Arc::new(est_remote::HttpRemote::new(config.remote.clone())?);
+        Self::build_with_remote(home, config, llm, sandbox, remote).await
+    }
+
+    /// Like [`Runtime::build_with`] with explicit forges and judges (tests).
+    pub async fn build_with_remote(
+        home: EstHome,
+        config: Config,
+        llm: Option<Arc<dyn LlmProvider>>,
+        sandbox: Arc<dyn Sandbox>,
+        remote: Arc<dyn RemoteSources>,
+    ) -> anyhow::Result<Self> {
         home.init()?;
         let store = Arc::new(SqliteStore::open(&home.database_file()).await?);
         let (events, _) = broadcast::channel(256);
@@ -75,8 +88,10 @@ impl Runtime {
             generated: store.clone(),
             recommendations: store.clone(),
             summaries: store.clone(),
+            discoveries: store.clone(),
             lesson_results: store,
             sandbox,
+            remote,
             llm: Arc::new(LlmSlot::new(llm)),
             publisher: Arc::new(BroadcastPublisher(events.clone())),
             git: Arc::new(CliGit::default()),
@@ -88,6 +103,7 @@ impl Runtime {
         };
         let settings = AppSettings {
             adi_decay: config.adi.unwrap_or_default(),
+            gitlab_hosts: config.remote.gitlab_hosts.clone(),
         };
         let app = App::new(ports, settings).await?;
         Ok(Self {

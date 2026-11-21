@@ -5,8 +5,56 @@ import { Icon } from "../app/icons";
 import { Markdown } from "../chat/Markdown";
 import { useT } from "../i18n";
 import { api } from "../services/api";
-import type { Criterion, LearningSession, Task } from "../types/api";
+import type { Criterion, LearningSession, PublishPreview, Task } from "../types/api";
 import { Badge, Empty, ErrorBox, shortId } from "../ui";
+import { PublishDraft, Published } from "../git/PublishDraft";
+
+/**
+ * A comment on the task's Issue. Two steps, decided on the server: the
+ * draft shows exactly what goes where; only "Publish" with that draft sends
+ * it, once.
+ */
+function IssueComment({ task }: { task: Task }) {
+  const { t } = useT();
+  const [body, setBody] = useState("");
+  const [draft, setDraft] = useState<PublishPreview | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const prepare = useMutation({ mutationFn: () => api.draftIssueComment(task.id, body), onSuccess: setDraft });
+  return (
+    <section className="stack">
+      <h3>{t("publish.title")}</h3>
+      {draft ? (
+        <PublishDraft
+          draft={draft}
+          onClose={() => setDraft(null)}
+          onPublished={(u) => {
+            setUrl(u);
+            setBody("");
+          }}
+        />
+      ) : (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setUrl(null);
+            prepare.mutate();
+          }}
+        >
+          <textarea rows={3} value={body} maxLength={8000} onChange={(e) => setBody(e.target.value)} placeholder={t("publish.placeholder")} aria-label={t("publish.title")} />
+          <div className="row">
+            <button className="secondary small" disabled={!body.trim() || prepare.isPending}>
+              {t("publish.prepare")}
+            </button>
+          </div>
+          <p className="hint">{t("publish.hint")}</p>
+        </form>
+      )}
+      <Published url={url} />
+      <ErrorBox error={prepare.error} />
+    </section>
+  );
+}
 
 function Criteria({ task, active, onAsk }: { task: Task; active: boolean; onAsk: (text: string) => void }) {
   const { t } = useT();
@@ -121,6 +169,7 @@ export function IssuePanel({ task, session, onAsk }: { task: Task | null; sessio
           </ul>
         </>
       )}
+      {task.source.type === "issue" && <IssueComment task={task} />}
       {session && (
         <dl className="kv">
           <dt>Git</dt>

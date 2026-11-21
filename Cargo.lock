@@ -483,6 +483,7 @@ dependencies = [
 name = "est-ai-policy"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "est-core",
  "est-domain",
  "globset",
@@ -504,8 +505,12 @@ dependencies = [
  "est-dependency",
  "est-domain",
  "est-git",
+ "est-issues",
  "est-learning",
+ "est-problems",
  "est-projects",
+ "est-remote",
+ "est-review",
  "est-sandbox",
  "est-storage",
  "est-workspace",
@@ -527,6 +532,7 @@ name = "est-application"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "est-ai-policy",
  "est-core",
  "est-dependency",
@@ -534,8 +540,10 @@ dependencies = [
  "est-documentation",
  "est-domain",
  "est-exercises",
+ "est-issues",
  "est-learning",
  "est-problems",
+ "est-review",
  "serde",
  "serde_json",
  "thiserror",
@@ -628,9 +636,21 @@ name = "est-git"
 version = "0.1.0"
 dependencies = [
  "est-application",
+ "est-review",
  "serde",
  "tempfile",
  "thiserror",
+ "url",
+]
+
+[[package]]
+name = "est-issues"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "est-core",
+ "est-domain",
+ "serde",
  "url",
 ]
 
@@ -674,6 +694,30 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "est-remote"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "est-application",
+ "est-issues",
+ "est-problems",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "est-review"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

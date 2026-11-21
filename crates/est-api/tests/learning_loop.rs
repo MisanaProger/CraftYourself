@@ -10,8 +10,8 @@ use axum::http::{Request, StatusCode};
 use est_api::{Config, Runtime, router};
 use est_application::AppResult;
 use est_application::ports::{
-    LlmProvider, LlmRequest, LlmResponse, ProviderInfo, Sandbox, SandboxInfo, SandboxOutcome,
-    SandboxRequest,
+    FetchedProblem, LlmProvider, LlmRequest, LlmResponse, ProviderInfo, RemoteSources, Sandbox,
+    SandboxInfo, SandboxOutcome, SandboxRequest,
 };
 use est_git::{Identity, Repo};
 use est_workspace::EstHome;
@@ -81,6 +81,34 @@ fn generated_content(system: &str, request: &str, attempt: usize) -> Option<Stri
             { "text": "BFS uses a", "options": ["stack", "queue"], "answer": 1, "explanation": "FIFO" },
             { "text": "DFS uses a", "options": ["stack", "queue"], "answer": 0, "explanation": "LIFO" }
         ]})
+        .to_string()
+    } else if system.starts_with("You explain an AI Dependency Index") {
+        let score = request
+            .split("ADI score (computed by code): ")
+            .nth(1)
+            .and_then(|r| r.lines().next())
+            .unwrap_or("?")
+            .to_owned();
+        // The first answer claims another score and is rejected.
+        if attempt == 0 {
+            "Your ADI is 3/100, excellent work on this Issue, keep going like that.".to_owned()
+        } else {
+            format!(
+                "The score is {score}/100: code the mentor showed ended up in your commit. Next time write the fix yourself first."
+            )
+        }
+    } else if system.starts_with("You help a learner of Craft Yourself") {
+        // Echo whether a goal was given, so the test sees what was sent.
+        let goal = request.contains("parsers");
+        json!({ "summary": if goal { "Parsers, as asked" } else { "From your activity" },
+            "issues": [
+                { "keywords": ["parser", "error message"], "language": "rust", "reason": "error handling" },
+                { "keywords": ["\""], "language": "cobol", "reason": "dropped" }
+            ],
+            "problems": [
+                { "platform": "codeforces", "tags": ["dp", "magic"], "rating": 1200, "reason": "dp practice" },
+                { "platform": "leetcode", "tags": ["hash-table"], "difficulty": "easy", "reason": "warm-up" }
+            ]})
         .to_string()
     } else if system.starts_with("Write one self-contained interactive HTML5 page") {
         "```html\n<!DOCTYPE html><html><body><svg></svg></body></html>\n```".to_owned()
@@ -164,11 +192,185 @@ impl Sandbox for FakeSandbox {
     }
 }
 
+/// GitHub and Codeforces in memory: Issue 5 is a good first issue, Issue 2
+/// is closed; the Issue's repository is the local origin.
+#[derive(Default)]
+struct FakeRemote {
+    origin: String,
+    fetched: Mutex<Vec<String>>,
+    comments: Mutex<Vec<(String, String)>>,
+}
+
+#[async_trait::async_trait]
+impl RemoteSources for FakeRemote {
+    async fn issue(&self, r: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue> {
+        self.fetched.lock().unwrap().push(r.url.clone());
+        if r.number > 5 {
+            return Err(est_application::AppError::NotFound("issue".into()));
+        }
+        Ok(est_issues::RemoteIssue {
+            title: "parse_range panics on `5..`".into(),
+            body: "<!-- Describe the bug -->\n`parse_range(\"5..\")` panics instead of returning an empty list.\n\n- [ ] `5..` returns an error\n- [ ] a regression test\n".into(),
+            open: r.number != 2,
+            labels: vec!["bug".into(), "good first issue".into()],
+            assignees: 0,
+            comments: 1,
+            pull_request: false,
+            locked: false,
+            created_at: None,
+            updated_at: Some(est_core::now()),
+            repository: est_issues::RemoteRepository {
+                clone_url: self.origin.clone(),
+                default_branch: Some("main".into()),
+                archived: false,
+                license: Some("MIT".into()),
+                language: Some("Rust".into()),
+            },
+        })
+    }
+
+    async fn problem(&self, p: &est_problems::ProblemRef) -> AppResult<FetchedProblem> {
+        self.fetched.lock().unwrap().push(p.url.clone());
+        Ok(FetchedProblem {
+            input: est_problems::ProblemInput {
+                url: Some(p.url.clone()),
+                title: Some("Watermelon".into()),
+                statement: "Pete and Billy want to divide a watermelon of weight $$$w$$$ into two even parts.".into(),
+                samples: vec![est_problems::Sample { input: "8".into(), output: "YES".into() }],
+                tags: vec!["math".into()],
+                rating: Some(800),
+                difficulty: None,
+            },
+            statement_found: true,
+        })
+    }
+
+    fn can_publish(&self, _: &est_issues::RepoRef) -> bool {
+        true
+    }
+
+    async fn create_pull_request(
+        &self,
+        repo: &est_issues::RepoRef,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: &str,
+    ) -> AppResult<String> {
+        self.comments.lock().unwrap().push((
+            format!("pr:{}:{head}->{base}", repo.project),
+            format!("{title}\n\n{body}"),
+        ));
+        Ok(format!("{}/pull/1", repo.url()))
+    }
+
+    async fn create_issue(
+        &self,
+        repo: &est_issues::RepoRef,
+        title: &str,
+        body: &str,
+    ) -> AppResult<String> {
+        self.comments.lock().unwrap().push((
+            format!("issue:{}", repo.project),
+            format!("{title}\n\n{body}"),
+        ));
+        Ok(format!("{}/issues/99", repo.url()))
+    }
+
+    async fn search_issues(
+        &self,
+        q: &est_issues::IssueQuery,
+        _limit: usize,
+    ) -> AppResult<Vec<est_issues::FoundIssue>> {
+        self.fetched
+            .lock()
+            .unwrap()
+            .push(format!("search:{}", q.github_q()));
+        let mut found = Vec::new();
+        for (n, open) in [(5, true), (7, true), (8, false)] {
+            let issue = est_issues::parse_issue_url(
+                &format!("https://github.com/acme/ranges/issues/{n}"),
+                &[],
+            )
+            .unwrap();
+            let mut remote = self.issue(&issue).await.unwrap_or_else(|_| {
+                // 7 and 8 exist only in search results.
+                est_issues::RemoteIssue {
+                    title: format!("Issue {n}"),
+                    body: "A description long enough to understand what has to change here.".into(),
+                    open,
+                    labels: vec!["help wanted".into()],
+                    assignees: 0,
+                    comments: 3,
+                    pull_request: false,
+                    locked: false,
+                    created_at: None,
+                    updated_at: Some(est_core::now()),
+                    repository: est_issues::RemoteRepository {
+                        clone_url: issue.clone_url(),
+                        default_branch: None,
+                        archived: false,
+                        license: None,
+                        language: None,
+                    },
+                }
+            });
+            remote.repository.license = None;
+            found.push(est_issues::FoundIssue { issue, remote });
+        }
+        Ok(found)
+    }
+
+    async fn search_problems(
+        &self,
+        q: &est_problems::search::ProblemQuery,
+    ) -> AppResult<Vec<est_problems::search::FoundProblem>> {
+        use est_problems::Platform;
+        self.fetched
+            .lock()
+            .unwrap()
+            .push(format!("search:{}", q.platform.as_str()));
+        let p = |id: &str, rating: Option<u32>, difficulty: Option<&str>, popularity| {
+            est_problems::search::FoundProblem {
+                platform: q.platform,
+                id: id.into(),
+                url: format!("https://example.invalid/{id}"),
+                title: id.into(),
+                tags: q.tags.clone(),
+                rating,
+                difficulty: difficulty.map(str::to_owned),
+                popularity: Some(popularity),
+                paid_only: false,
+            }
+        };
+        Ok(match q.platform {
+            Platform::Codeforces => vec![
+                p("4A", Some(1200), None, 900),
+                p("10B", Some(1300), None, 500),
+                p("11C", Some(2400), None, 9000),
+            ],
+            _ => vec![
+                p("two-sum", None, Some("easy"), 55),
+                p("lru-cache", None, Some("medium"), 40),
+            ],
+        })
+    }
+
+    async fn comment(&self, r: &est_issues::IssueRef, body: &str) -> AppResult<String> {
+        self.comments
+            .lock()
+            .unwrap()
+            .push((r.url.clone(), body.to_owned()));
+        Ok(format!("{}#issuecomment-1", r.url))
+    }
+}
+
 struct Harness {
     app: Router,
     rt: Runtime,
     llm: Arc<FakeLlm>,
     sandbox: Arc<FakeSandbox>,
+    remote: Arc<FakeRemote>,
     _dir: tempfile::TempDir,
     origin: PathBuf,
     revision: String,
@@ -216,11 +418,16 @@ async fn harness() -> Harness {
     let (origin, revision) = make_origin(dir.path());
     let llm = Arc::new(FakeLlm::default());
     let sandbox = Arc::new(FakeSandbox::default());
-    let rt = Runtime::build_with(
+    let remote = Arc::new(FakeRemote {
+        origin: origin.to_string_lossy().into_owned(),
+        ..Default::default()
+    });
+    let rt = Runtime::build_with_remote(
         EstHome::new(dir.path().join(".est")),
         Config::default(),
         Some(llm.clone()),
         sandbox.clone(),
+        remote.clone(),
     )
     .await
     .unwrap();
@@ -229,6 +436,7 @@ async fn harness() -> Harness {
         rt,
         llm,
         sandbox,
+        remote,
         _dir: dir,
         origin,
         revision,
@@ -670,7 +878,7 @@ async fn full_learning_loop() {
     assert_eq!(adi["aggregate"]["issues"], 1);
     assert_eq!(adi["aggregate"]["provisional"], true);
     let item = &adi["history"][0];
-    assert_eq!(item["scoring_version"], "observed-0.1");
+    assert_eq!(item["scoring_version"], "observed-0.2");
     assert_eq!(
         item["observed_features"]["answers_by_level"],
         json!([1, 0, 1, 0, 0])
@@ -724,13 +932,15 @@ async fn full_learning_loop() {
             .iter()
             .all(|e| e["source"] == "issue")
     );
-    assert!(
-        dt["skills"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|s| s["score"].is_null() && s["status"] == "not_assessed")
-    );
+    // A bug fix is evidence for reproducing bugs; other skills stay
+    // not assessed (never zero).
+    for skill in dt["skills"].as_array().unwrap() {
+        if skill["id"] == "reproduction" {
+            assert_eq!(skill["status"], "insufficient_evidence", "{skill}");
+        } else {
+            assert!(skill["score"].is_null() && skill["status"] == "not_assessed");
+        }
+    }
 
     // Privacy: provider shown, export contains the history, delete removes it.
     let (_, p) = h.get("/api/v1/settings/privacy").await;
@@ -1807,4 +2017,634 @@ async fn mentor_answers_stream_without_code() {
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     let logged = export["events"].to_string();
     assert!(logged.contains("ai.answer") && !logged.contains("ai.answer.delta"));
+}
+
+#[tokio::test]
+async fn imports_issues_and_publishes_only_confirmed_drafts() {
+    let h = harness().await;
+    let issue = "https://github.com/acme/ranges/issues/5";
+
+    // Without the learner's permission nothing is read.
+    let (s, e) = h
+        .post("/api/v1/issues/preview", json!({ "url": issue }))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{e}");
+    assert_eq!(e["permission"], "network");
+    assert!(h.remote.fetched.lock().unwrap().is_empty());
+    let (s, e) = h
+        .post(
+            "/api/v1/issues/preview",
+            json!({ "url": "https://example.com/a/b/issues/1", "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+
+    let (s, p) = h
+        .post(
+            "/api/v1/issues/preview",
+            json!({ "url": format!("{issue}?tab=1"), "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{p}");
+    assert_eq!(p["issue"]["url"], issue);
+    assert_eq!(p["suitability"]["verdict"], "suitable");
+    assert_eq!(p["task"]["task_type"], "bug-fix");
+    assert_eq!(p["task"]["difficulty"], "beginner");
+    assert_eq!(p["task_id"], Value::Null);
+
+    // A closed Issue is not a learning task.
+    let (s, e) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": "https://github.com/acme/ranges/issues/2", "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+    assert!(e["error"].as_str().unwrap().contains("closed"));
+
+    let (s, task) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issue, "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+    assert_eq!(task["source"], json!({ "type": "issue", "url": issue }));
+    assert_eq!(task["acceptance_criteria"][1]["text"], "a regression test");
+    assert!(
+        !task["description"]
+            .as_str()
+            .unwrap()
+            .contains("Describe the bug")
+    );
+    let tid = task["id"].as_str().unwrap().to_owned();
+    // Importing again returns the same task.
+    let (_, again) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issue, "allow_network": true }),
+        )
+        .await;
+    assert_eq!(again["id"], tid.as_str());
+
+    // The Issue starts at L0 like any other.
+    let (s, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{started}");
+    let conv = started["conversation_id"].as_str().unwrap();
+    assert_eq!(h.level(conv).await, 0);
+
+    // Publishing: never in one step, never a key, only for Issue tasks.
+    let comments = format!("/api/v1/tasks/{tid}/issue/comments");
+    let (s, e) = h
+        .post(
+            &comments,
+            json!({ "body": "my token ghp_abcdefghijklmnopqrstu" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+    // The Issue's repository was connected by the import.
+    let other = h
+        .task(task["project_id"].as_str().unwrap(), "Not from an Issue")
+        .await;
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/tasks/{other}/issue/comments"),
+            json!({ "body": "hi" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (s, draft) = h
+        .post(
+            &comments,
+            json!({ "body": "  I'd like to work on this.  " }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{draft}");
+    assert_eq!(draft["body"], "I'd like to work on this.");
+    assert_eq!(draft["target"], issue);
+    assert_eq!(draft["warnings"], json!([]));
+    assert!(h.remote.comments.lock().unwrap().is_empty());
+    let confirm = format!(
+        "/api/v1/publish/drafts/{}/confirm",
+        draft["id"].as_str().unwrap()
+    );
+    let (s, _) = h.post(&confirm, json!({ "digest": "0000" })).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    // A draft is used once, even when the confirmation was wrong.
+    let (s, _) = h.post(&confirm, json!({ "digest": draft["digest"] })).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert!(h.remote.comments.lock().unwrap().is_empty());
+
+    let (_, draft) = h
+        .post(&comments, json!({ "body": "I'd like to work on this." }))
+        .await;
+    let confirm = format!(
+        "/api/v1/publish/drafts/{}/confirm",
+        draft["id"].as_str().unwrap()
+    );
+    let (s, done) = h.post(&confirm, json!({ "digest": draft["digest"] })).await;
+    assert_eq!(s, StatusCode::OK, "{done}");
+    assert_eq!(done["url"], format!("{issue}#issuecomment-1"));
+    assert_eq!(
+        *h.remote.comments.lock().unwrap(),
+        [(issue.to_owned(), "I'd like to work on this.".to_owned())]
+    );
+
+    let (_, draft) = h.post(&comments, json!({ "body": "Never mind" })).await;
+    let id = draft["id"].as_str().unwrap();
+    let (s, _) = h
+        .call("DELETE", &format!("/api/v1/publish/drafts/{id}"), None)
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = h
+        .post(
+            &format!("/api/v1/publish/drafts/{id}/confirm"),
+            json!({ "digest": draft["digest"] }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert_eq!(h.remote.comments.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn loads_problem_statements_with_permission() {
+    let h = harness().await;
+    let url = "https://codeforces.com/problemset/problem/4/A";
+    let (s, e) = h
+        .post("/api/v1/problems/fetch", json!({ "url": url }))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{e}");
+    assert!(h.remote.fetched.lock().unwrap().is_empty());
+    let (s, e) = h
+        .post(
+            "/api/v1/problems/fetch",
+            json!({ "url": "https://leetcode.cn/problems/two-sum/", "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+
+    let (s, fetched) = h
+        .post(
+            "/api/v1/problems/fetch",
+            json!({ "url": url, "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{fetched}");
+    assert!(fetched["statement_found"].as_bool().unwrap());
+    // The learner reviews it; importing is the usual request.
+    let mut input = fetched["input"].clone();
+    input["language"] = json!("python");
+    let (s, started) = h.post("/api/v1/problems", input).await;
+    assert_eq!(s, StatusCode::CREATED, "{started}");
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    let statement = std::fs::read_to_string(ws.join("PROBLEM.md")).unwrap();
+    assert!(statement.contains("weight $w$"), "{statement}");
+}
+
+#[tokio::test]
+async fn discovery_plans_searches_and_code_runs_them() {
+    let h = harness().await;
+    // Nothing goes to the model or the network without permission.
+    let (s, e) = h
+        .post("/api/v1/discovery", json!({ "goal": "parsers" }))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{e}");
+    assert_eq!(h.llm_calls(), 0);
+    assert!(h.remote.fetched.lock().unwrap().is_empty());
+    let (s, latest) = h.get("/api/v1/discovery").await;
+    assert_eq!((s, latest), (StatusCode::OK, Value::Null));
+
+    // A problem imported earlier is not offered again.
+    let mut input = watermelon("python");
+    input["url"] = json!("https://codeforces.com/problemset/problem/4/A");
+    assert_eq!(
+        h.post("/api/v1/problems", input).await.0,
+        StatusCode::CREATED
+    );
+
+    let (s, d) = h
+        .post(
+            "/api/v1/discovery",
+            json!({ "goal": "I want to understand parsers and write better error messages",
+                    "allow_network": true, "lang": "en" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{d}");
+    assert_eq!(d["summary"], "Parsers, as asked");
+    let request = h.llm.requests.lock().unwrap().last().unwrap().messages[0]
+        .content
+        .clone();
+    assert!(request.contains("Learner's goal: \"I want to understand parsers"));
+    assert!(request.contains("Activity snapshot"));
+
+    // The invalid search was dropped; queries were built in code.
+    let fetched = h.remote.fetched.lock().unwrap().clone();
+    assert!(fetched.contains(&"search:parser \"error message\" is:issue is:open no:assignee archived:false language:\"Rust\" label:\"good first issue\",\"help wanted\",\"beginner\",\"easy\"".to_owned()), "{fetched:?}");
+    assert_eq!(
+        fetched.iter().filter(|f| f.starts_with("search:")).count(),
+        3
+    );
+    assert_eq!(d["searches"].as_array().unwrap().len(), 3);
+
+    // Issues: closed one screened out, the good first issue first.
+    let issues = d["issues"].as_array().unwrap();
+    let urls: Vec<_> = issues
+        .iter()
+        .map(|i| i["issue"]["url"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        urls,
+        [
+            "https://github.com/acme/ranges/issues/5",
+            "https://github.com/acme/ranges/issues/7"
+        ]
+    );
+    assert_eq!(issues[0]["reason"], "error handling");
+    assert_eq!(issues[0]["task_type"], "bug-fix");
+
+    // Problems: inside the rating window, not imported, then LeetCode.
+    let ids: Vec<_> = d["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["10B", "two-sum"]);
+    assert_eq!(d["problems"][0]["reason"], "dp practice");
+
+    // Importing a suggestion is the usual import.
+    let (s, task) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issues[0]["issue"]["url"], "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+
+    // Without a goal the model chooses; an imported Issue is not offered.
+    let (s, d) = h
+        .post(
+            "/api/v1/discovery",
+            json!({ "allow_network": true, "problems": false }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{d}");
+    assert_eq!(d["summary"], "From your activity");
+    assert_eq!(d["goal"], Value::Null);
+    assert_eq!(d["problems"], json!([]));
+    assert_eq!(d["issues"].as_array().unwrap().len(), 1);
+    let (_, latest) = h.get("/api/v1/discovery").await;
+    assert_eq!(latest["id"], d["id"]);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["discoveries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn git_workflow_reviews_commits_and_publishes_confirmed_pull_requests() {
+    let h = harness().await;
+    // The origin is a clone of a GitHub repository.
+    let status = std::process::Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/ranges.git",
+        ])
+        .current_dir(&h.origin)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let issue = "https://github.com/acme/ranges/issues/5";
+    let (s, task) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issue, "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+    let tid = task["id"].as_str().unwrap().to_owned();
+    let pid = task["project_id"].as_str().unwrap().to_owned();
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+
+    // Two commits of the learner: a good one and a sloppy one.
+    let repo = Repo::open(&ws);
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        "pub fn parse_range(s: &str) -> Result<Vec<u32>, String> {\n    todo!()\n}\n",
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit(
+        "Return an error for an open range\n\n`5..` used to panic.",
+        &learner(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(ws.join("target")).unwrap();
+    std::fs::write(ws.join("target/out.log"), "x").unwrap();
+    repo.add(&["target/out.log".into()]).unwrap();
+    repo.commit("fixed stuff", &learner()).unwrap();
+
+    let (s, review) = h
+        .get(&format!("/api/v1/sessions/{sid}/commits/review"))
+        .await;
+    assert_eq!(s, StatusCode::OK, "{review}");
+    let commits = review["commits"].as_array().unwrap();
+    assert_eq!(commits.len(), 2);
+    assert_eq!(commits[0]["subject"], "Return an error for an open range");
+    assert_eq!(commits[0]["score"], 100);
+    let codes: Vec<_> = commits[1]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["code"].as_str().unwrap())
+        .collect();
+    assert!(
+        codes.contains(&"not_imperative") && codes.contains(&"generated_file"),
+        "{codes:?}"
+    );
+    assert_eq!(review["conventions"]["learned_from"], 1);
+
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+
+    let (s, pr) = h.get(&format!("/api/v1/sessions/{sid}/pull-request")).await;
+    assert_eq!(s, StatusCode::OK, "{pr}");
+    assert_eq!(pr["repository"]["project"], "acme/ranges");
+    assert_eq!(pr["can_publish"], true);
+    let body = pr["body"].as_str().unwrap();
+    assert!(body.starts_with("Closes #5."), "{body}");
+    assert!(body.contains("- Return an error for an open range\n- fixed stuff"));
+    assert!(body.contains("`cargo test` — passed (3 passed, 0 failed)"));
+    let failed: Vec<_> = pr["readiness"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["ok"] == false)
+        .map(|r| r["code"].as_str().unwrap())
+        .collect();
+    assert!(failed.contains(&"criteria_done"), "{failed:?}");
+    assert_eq!(pr["ready"], false);
+
+    // Publishing: validated branch names, then a confirmed draft.
+    let draft_url = format!("/api/v1/sessions/{sid}/pull-request/draft");
+    let (s, _) = h
+        .post(
+            &draft_url,
+            json!({ "title": "Fix", "body": "b", "head": "me:x y", "base": "main" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, draft) = h
+        .post(
+            &draft_url,
+            json!({ "title": pr["title"], "body": body, "head": "learner:est/fix", "base": "main" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{draft}");
+    assert_eq!(draft["kind"], "pull_request");
+    assert_eq!(
+        draft["target"],
+        "https://github.com/acme/ranges/compare/main...learner:est/fix"
+    );
+    assert!(h.remote.comments.lock().unwrap().is_empty());
+    let (s, done) = h
+        .post(
+            &format!(
+                "/api/v1/publish/drafts/{}/confirm",
+                draft["id"].as_str().unwrap()
+            ),
+            json!({ "digest": draft["digest"] }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{done}");
+    assert_eq!(done["url"], "https://github.com/acme/ranges/pull/1");
+    assert_eq!(
+        h.remote.comments.lock().unwrap()[0].0,
+        "pr:acme/ranges:learner:est/fix->main"
+    );
+
+    // Issue writing: a checklist, and publishing only a text that is ready.
+    let (_, r) = h
+        .post(
+            "/api/v1/issues/review",
+            json!({ "kind": "bug", "title": "Bug", "body": "broken" }),
+        )
+        .await;
+    assert_eq!(r["score"], 0);
+    assert_eq!(r["blockers"][0]["code"], "description_missing");
+    let new_issue = format!("/api/v1/projects/{pid}/issues/draft");
+    let (s, _) = h
+        .post(
+            &new_issue,
+            json!({ "kind": "bug", "title": "Bug", "body": "broken" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let text = "Steps:\n1. parse_range(\"5..\")\n2. run\n\nExpected: an error. Actual: a panic.";
+    let (s, draft) = h
+        .post(
+            &new_issue,
+            json!({ "kind": "bug", "title": "parse_range panics on open ranges", "body": text }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{draft}");
+    assert_eq!(draft["kind"], "issue");
+    let (s, done) = h
+        .post(
+            &format!(
+                "/api/v1/publish/drafts/{}/confirm",
+                draft["id"].as_str().unwrap()
+            ),
+            json!({ "digest": draft["digest"] }),
+        )
+        .await;
+    assert_eq!(
+        (s, done["url"].as_str()),
+        (
+            StatusCode::OK,
+            Some("https://github.com/acme/ranges/issues/99")
+        )
+    );
+
+    // The summary keeps the commit quality.
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, summary) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert!(
+        summary["commit_quality"].as_u64().unwrap() < 100,
+        "{summary}"
+    );
+}
+
+#[tokio::test]
+async fn skills_transfer_copied_code_and_explained_adi() {
+    let h = harness().await;
+    let pid = h.new_project().await["id"].as_str().unwrap().to_owned();
+    // An unknown skill is refused.
+    let (s, _) = h
+        .post(
+            "/api/v1/tasks",
+            json!({ "project_id": pid, "title": "x", "task_type": "testing", "difficulty": "beginner",
+                    "skills": ["debugging-testing/telepathy"] }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, task) = h
+        .post(
+            "/api/v1/tasks",
+            json!({ "project_id": pid, "title": "Test parse_range", "task_type": "testing",
+                    "difficulty": "beginner", "base_revision": h.revision,
+                    "disciplines": ["debugging-testing"],
+                    "skills": ["debugging-testing/unit-integration"],
+                    "mentor": { "max_level": 4, "denied_paths": [] } }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+    assert_eq!(
+        task["skills"],
+        json!(["debugging-testing/unit-integration"])
+    );
+    let tid = task["id"].as_str().unwrap().to_owned();
+
+    // First seen in a lesson (any result counts as having met the skill).
+    h.post(
+        "/api/v1/learning/programs/testing/lessons/read-output/quiz",
+        json!({ "answers": {} }),
+    )
+    .await;
+
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    for _ in 0..3 {
+        h.post(
+            &format!("/api/v1/conversations/{conv}/engagement/raise"),
+            json!({}),
+        )
+        .await;
+    }
+    assert_eq!(h.level(&conv).await, 3);
+    *h.llm.reply.lock().unwrap() = Some(
+        "Try this:\n```rust\nlet (start, end) = s.split_once(\"..\")?;\nlet first: u32 = start.parse().ok()?;\n```".into(),
+    );
+    let replies = h.say(&conv, "Покажи пример исправления").await;
+    assert!(
+        replies
+            .iter()
+            .any(|m| m["content"].as_str().unwrap_or("").contains("split_once"))
+    );
+
+    // The learner's commit contains the two lines the mentor showed.
+    let repo = Repo::open(&ws);
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        "pub fn parse_range(s: &str) -> Option<Vec<u32>> {\n    let (start, end) = s.split_once(\"..\")?;\n    let first: u32 = start.parse().ok()?;\n    let last: u32 = end.parse().ok()?;\n    let values: Vec<u32> = (first..last).collect();\n    Some(values)\n}\n\n#[test]\nfn open_range_is_none() {\n    assert_eq!(parse_range(\"5..\"), None);\n}\n",
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit(
+        "Return None for an open range\n\nAdd a test for it.",
+        &learner(),
+    )
+    .unwrap();
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // ADI: the copied share is an observed factor.
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    let a = &adi["history"][0];
+    assert_eq!(a["scoring_version"], "observed-0.2");
+    assert_eq!(a["observed_features"]["copied_lines"], 2);
+    assert!(
+        a["factors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["code"] == "copied_code"),
+        "{a}"
+    );
+    let score = a["score"].as_u64().unwrap();
+
+    // The model explains the score; an answer with another score is rejected.
+    let (s, explained) = h
+        .post(
+            &format!("/api/v1/analytics/adi/{tid}/explain"),
+            json!({ "lang": "en" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{explained}");
+    assert_eq!(explained["score"], score);
+    assert!(
+        explained["review"]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("The score is {score}/100"))
+    );
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    assert_eq!(adi["history"][0]["review"]["model"], "fake/fake-1");
+    assert_eq!(adi["history"][0]["score"], score);
+
+    // Skill Matrix: the named skill, with Transfer (lesson → project), and
+    // the commits as Git practice.
+    let (_, m) = h.get("/api/v1/analytics/disciplines?lang=en").await;
+    let disc = |id: &str| {
+        m["disciplines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let dt = disc("debugging-testing");
+    let unit = dt["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "unit-integration")
+        .unwrap();
+    let dims: Vec<_> = unit["dimensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["dimension"].as_str().unwrap())
+        .collect();
+    assert!(
+        dims.contains(&"practice") && dims.contains(&"transfer"),
+        "{dims:?}"
+    );
+    let git = disc("git");
+    let commits = git["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "commits")
+        .unwrap();
+    assert_eq!(commits["score"], 100, "{commits}");
 }

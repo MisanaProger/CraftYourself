@@ -26,6 +26,8 @@ pub struct Config {
     pub adi: Option<DecayParams>,
     /// Sandbox Manager (`[sandbox]`): runtime, images and limits.
     pub sandbox: est_sandbox::SandboxConfig,
+    /// Code forges and judges (`[remote]`): self-hosted GitLab, tokens.
+    pub remote: est_remote::RemoteConfig,
 }
 
 impl Default for Config {
@@ -38,6 +40,7 @@ impl Default for Config {
             llm: None,
             adi: None,
             sandbox: est_sandbox::SandboxConfig::default(),
+            remote: est_remote::RemoteConfig::default(),
         }
     }
 }
@@ -113,6 +116,16 @@ bind = "127.0.0.1:7878"
 # [sandbox.images]
 # rust = "docker.io/library/rust:1-slim"
 
+# Code forges and judges. EST reads an Issue or a problem statement only
+# when you allow network access for that request. Publishing (a comment on
+# an imported Issue) always shows a draft first and needs a token, read from
+# the environment variable named here; tokens are never stored by EST.
+# [remote]
+# gitlab_hosts = ["git.example.org"]   # self-hosted GitLab
+# github_token_env = "GITHUB_TOKEN"
+# gitlab_token_env = "GITLAB_TOKEN"
+# timeout_secs = 20
+
 # ADI double decay (preliminary MVP values).
 # [adi]
 # half_life_days = 30.0
@@ -140,6 +153,17 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.llm.unwrap().model, "m");
         assert_eq!(cfg.adi.unwrap().half_life_days, 7.0);
+    }
+
+    #[test]
+    fn parses_remote() {
+        let cfg: Config = toml::from_str(
+            "[remote]\ngitlab_hosts = [\"git.example.org\"]\ngithub_token_env = \"GH\"\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.remote.gitlab_hosts, ["git.example.org"]);
+        assert_eq!(cfg.remote.github_token_env.as_deref(), Some("GH"));
+        assert_eq!(cfg.remote.timeout_secs, 20);
     }
 
     #[test]

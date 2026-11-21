@@ -1,8 +1,9 @@
 //! Problems from online judges (LeetCode, Codeforces, …) for a guided
 //! analysis (разбор задачи).
 //!
-//! The learner pastes a link, the statement and the sample tests; nothing
-//! is fetched from the judge. This crate is pure: it recognises the link,
+//! The learner pastes a link, the statement and the sample tests, or asks
+//! EST to read them from the judge ([`html`] turns the judge's HTML into
+//! the same input). This crate is pure: it recognises the link,
 //! normalises and limits the statement and samples, and describes the
 //! workspace the learner solves the problem in — a solution template in
 //! the chosen language and a script that checks it against the samples in
@@ -16,6 +17,9 @@
 //!   become unit tests the learner writes.
 
 use serde::{Deserialize, Serialize};
+
+pub mod html;
+pub mod search;
 
 pub const MAX_STATEMENT_BYTES: usize = 24 * 1024;
 pub const MAX_SAMPLES: usize = 10;
@@ -193,8 +197,9 @@ pub struct Sample {
     pub output: String,
 }
 
-/// What the learner pasted.
-#[derive(Debug, Clone, Default, Deserialize)]
+/// What the learner pasted (or what was read from the judge for the
+/// learner to review).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProblemInput {
     #[serde(default)]
     pub url: Option<String>,

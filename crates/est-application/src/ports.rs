@@ -148,6 +148,15 @@ pub trait GitPort: Send + Sync {
     fn status(&self, repo: &Path) -> AppResult<Vec<FileStatus>>;
     fn diff(&self, repo: &Path, target: DiffTarget<'_>) -> AppResult<String>;
     fn log(&self, repo: &Path, since: Option<&str>, limit: usize) -> AppResult<Vec<CommitSummary>>;
+    /// Commits with messages and file stats, newest first: after `since`
+    /// (`since..HEAD`), or else the history of `rev` (default `HEAD`).
+    fn commits(
+        &self,
+        repo: &Path,
+        since: Option<&str>,
+        rev: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<est_review::commits::CommitData>>;
     fn tracked_files(&self, repo: &Path) -> AppResult<Vec<String>>;
     fn grep(&self, repo: &Path, needle: &str, max: usize) -> AppResult<Vec<SourceMatch>>;
     /// Initialises a repository with all files of `path` in one commit;
@@ -232,6 +241,19 @@ pub struct AdiAssessment {
     pub created_at: est_core::Timestamp,
     /// Completion order, used to break timestamp ties.
     pub sequence: i64,
+    /// A model's explanation of the score; never changes it.
+    #[serde(default)]
+    pub review: Option<AdiReview>,
+}
+
+/// Text a model wrote about an ADI that code computed.
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
+pub struct AdiReview {
+    pub text: String,
+    /// `provider/model`.
+    pub model: String,
+    pub lang: String,
+    pub created_at: est_core::Timestamp,
 }
 
 #[async_trait]
@@ -239,6 +261,8 @@ pub trait AdiRepository: Send + Sync {
     /// Replaces any earlier assessment of the same task.
     async fn save(&self, assessment: &AdiAssessment) -> AppResult<AdiAssessment>;
     async fn list(&self) -> AppResult<Vec<AdiAssessment>>;
+    /// Attaches a model's explanation to the task's assessment.
+    async fn set_review(&self, task: &TaskId, review: &AdiReview) -> AppResult<()>;
 }
 
 /// Everything stored about the user, for export (v0.3 §20).
@@ -480,6 +504,21 @@ pub trait RecommendationRepository: Send + Sync {
     ) -> AppResult<Vec<RecommendationSet>>;
 }
 
+/// Discoveries (searches planned by a model), newest first.
+#[async_trait]
+pub trait DiscoveryRepository: Send + Sync {
+    async fn save_discovery(
+        &self,
+        user: &UserId,
+        discovery: &crate::discovery::Discovery,
+    ) -> AppResult<()>;
+    async fn discoveries(
+        &self,
+        user: &UserId,
+        limit: usize,
+    ) -> AppResult<Vec<crate::discovery::Discovery>>;
+}
+
 /// Session Summaries, written in code when a session ends.
 #[async_trait]
 pub trait SessionSummaryRepository: Send + Sync {
@@ -510,4 +549,98 @@ pub trait LessonResultRepository: Send + Sync {
     async fn record_result(&self, user: &UserId, result: &LessonResult) -> AppResult<()>;
     /// Oldest first.
     async fn lesson_results(&self, user: &UserId) -> AppResult<Vec<LessonResult>>;
+}
+
+// ---- forges and judges -------------------------------------------------------
+
+/// A problem read from a judge, for the learner to review before importing.
+#[derive(Debug, Clone, Serialize)]
+pub struct FetchedProblem {
+    pub input: est_problems::ProblemInput,
+    /// The statement itself was read (not only the title and tags).
+    pub statement_found: bool,
+}
+
+/// Reading from and publishing to code forges and online judges. The
+/// application calls it only after `est_ai_policy::gates` allowed the action.
+#[async_trait]
+pub trait RemoteSources: Send + Sync {
+    /// An Issue and its repository.
+    async fn issue(&self, issue: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue>;
+    /// A problem's statement, samples and metadata.
+    async fn problem(&self, problem: &est_problems::ProblemRef) -> AppResult<FetchedProblem>;
+    /// Whether a token for publishing to the repository's forge is configured.
+    fn can_publish(&self, repo: &est_issues::RepoRef) -> bool;
+    /// Publishes a comment on the Issue; returns the comment's link.
+    async fn comment(&self, issue: &est_issues::IssueRef, body: &str) -> AppResult<String>;
+    /// Opens a pull request from `head` (`branch` or `user:branch`, pushed
+    /// by the learner) into `base`; returns its link.
+    async fn create_pull_request(
+        &self,
+        _repo: &est_issues::RepoRef,
+        _title: &str,
+        _body: &str,
+        _head: &str,
+        _base: &str,
+    ) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "opening pull requests is not supported here".into(),
+        ))
+    }
+    /// Opens a new Issue; returns its link.
+    async fn create_issue(
+        &self,
+        _repo: &est_issues::RepoRef,
+        _title: &str,
+        _body: &str,
+    ) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "opening Issues is not supported here".into(),
+        ))
+    }
+    /// Open Issues on GitHub matching the query, newest activity first.
+    async fn search_issues(
+        &self,
+        _query: &est_issues::IssueQuery,
+        _limit: usize,
+    ) -> AppResult<Vec<est_issues::FoundIssue>> {
+        Err(crate::AppError::Invalid(
+            "searching Issues is not configured".into(),
+        ))
+    }
+    /// Problems on the query's platform with its tags (and difficulty);
+    /// the application picks among them.
+    async fn search_problems(
+        &self,
+        _query: &est_problems::search::ProblemQuery,
+    ) -> AppResult<Vec<est_problems::search::FoundProblem>> {
+        Err(crate::AppError::Invalid(
+            "searching problems is not configured".into(),
+        ))
+    }
+}
+
+/// Used when nothing is configured: every call fails.
+pub struct NoRemote;
+
+#[async_trait]
+impl RemoteSources for NoRemote {
+    async fn issue(&self, _: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue> {
+        Err(crate::AppError::Invalid(
+            "reading Issues is not configured".into(),
+        ))
+    }
+    async fn problem(&self, _: &est_problems::ProblemRef) -> AppResult<FetchedProblem> {
+        Err(crate::AppError::Invalid(
+            "reading problems is not configured".into(),
+        ))
+    }
+    fn can_publish(&self, _: &est_issues::RepoRef) -> bool {
+        false
+    }
+    async fn comment(&self, _: &est_issues::IssueRef, _: &str) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "publishing is not configured".into(),
+        ))
+    }
 }

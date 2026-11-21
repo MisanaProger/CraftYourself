@@ -50,6 +50,19 @@ pub async fn skills(
     ))
 }
 
+/// A model's explanation of an Issue's ADI; the score is unchanged.
+pub async fn explain_adi(
+    State(rt): State<Runtime>,
+    axum::extract::Path(task): axum::extract::Path<String>,
+    Json(q): Json<LangQuery>,
+) -> ApiResult<Json<est_application::ports::AdiAssessment>> {
+    Ok(Json(
+        rt.app
+            .explain_adi(&est_core::TaskId::from(task), q.lang.as_deref())
+            .await?,
+    ))
+}
+
 pub async fn privacy(State(rt): State<Runtime>) -> Json<PrivacySettings> {
     Json(rt.app.privacy_settings())
 }

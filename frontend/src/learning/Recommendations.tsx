@@ -58,7 +58,7 @@ function ActionButton({ r }: { r: Recommendation }) {
   }
 }
 
-function WhatTheModelSees() {
+export function WhatTheModelSees() {
   const { t, lang } = useT();
   const [open, setOpen] = useState(false);
   const activity = useQuery({ queryKey: ["activity", lang], queryFn: () => api.learningActivity(lang), enabled: open });

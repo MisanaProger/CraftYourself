@@ -92,6 +92,33 @@ impl GitPort for CliGit {
         .map_err(map)
     }
 
+    fn commits(
+        &self,
+        repo: &Path,
+        since: Option<&str>,
+        rev: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<est_review::commits::CommitData>> {
+        Ok(Repo::open(repo)
+            .log_detailed(since, rev, limit)
+            .map_err(map)?
+            .into_iter()
+            .map(|c| est_review::commits::CommitData {
+                hash: c.hash,
+                message: c.message,
+                files: c
+                    .files
+                    .into_iter()
+                    .map(|f| est_review::commits::FileChange {
+                        path: f.path,
+                        added: f.added,
+                        deleted: f.deleted,
+                    })
+                    .collect(),
+            })
+            .collect())
+    }
+
     fn log(&self, repo: &Path, since: Option<&str>, limit: usize) -> AppResult<Vec<CommitSummary>> {
         Ok(Repo::open(repo)
             .log(since, limit)

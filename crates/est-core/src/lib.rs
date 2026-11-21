@@ -150,6 +150,7 @@ pub mod events {
     pub const LEVEL_CHANGED: &str = "engagement.level.changed";
     pub const ISSUE_RESET: &str = "engagement.issue.reset";
     pub const ADI_ASSESSED: &str = "adi.assessed";
+    pub const ADI_EXPLAINED: &str = "adi.explained";
 }
 
 /// Lowercase ASCII slug: letters, digits and single dashes.

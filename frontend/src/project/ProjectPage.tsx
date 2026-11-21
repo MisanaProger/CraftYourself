@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { CreateTaskForm } from "../issue/CreateTaskForm";
 import { ImportExerciseForm } from "../issue/ImportExerciseForm";
+import { IssueWriter } from "../git/IssueWriter";
 import { TaskTable } from "../issue/TaskTable";
 import { api } from "../services/api";
 import { Card, Empty, ErrorBox, PageTitle } from "../ui";
@@ -61,6 +62,9 @@ export function ProjectPage() {
           <ImportExerciseForm />
         </Card>
       </div>
+      <Card title={t("issueText.title")}>
+        <IssueWriter projectId={p.id} hasRepository={!!p.repository_url} />
+      </Card>
     </div>
   );
 }

@@ -103,6 +103,10 @@ pub struct Task {
     pub learning_goals: Vec<String>,
     /// Discipline ids from the ESM catalog this task exercises.
     pub disciplines: Vec<String>,
+    /// Skills it exercises, as `discipline/skill` (Skill Matrix evidence
+    /// at skill level).
+    #[serde(default)]
+    pub skills: Vec<String>,
     /// Commit the task is pinned to; `None` = project HEAD at start time.
     pub base_revision: Option<String>,
     /// Command to run the task's tests (executed by the sandbox).
@@ -127,6 +131,9 @@ pub struct NewTask {
     pub learning_goals: Vec<String>,
     #[serde(default)]
     pub disciplines: Vec<String>,
+    /// `discipline/skill` ids.
+    #[serde(default)]
+    pub skills: Vec<String>,
     #[serde(default)]
     pub base_revision: Option<String>,
     #[serde(default)]

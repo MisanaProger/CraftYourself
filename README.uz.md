@@ -45,8 +45,9 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   joylashtiring va Python, C++ yoki Rust’ni tanlang: yechim shabloni bilan ish
   katalogi yaratiladi, misollar sandboxda ishga tushiriladi, mentor esa
   bosqichma-bosqich olib boradi — shart, misollar, g‘oya, murakkablik,
-  chegaraviy holatlar — L0 dan boshlab, javob o‘rniga savollar bilan. Saytdan
-  hech narsa yuklab olinmaydi.
+  chegaraviy holatlar — L0 dan boshlab, javob o‘rniga savollar bilan. Sizning
+  ruxsatingiz bilan EST shart, misollar, teglar va reytingni Codeforces yoki
+  LeetCode’dan o‘zi yuklaydi; boshlashdan oldin ularni tekshirasiz.
 - **Tavsiyalar.** Ulangan sun’iy intellekt faolligingiz asosida keyingi
   qadamlarni taklif qiladi: qaysi dasturlarni tugatish, qaysi Issue’larga
   qaytish, Codeforces yoki LeetCode’da mavzu va reyting bo‘yicha qaysi
@@ -74,6 +75,27 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   sahifaga L2 darajasidan boshlab ruxsat beradi, undan pastda sahifalar olib
   tashlanadi. Animatsiyalar, canvas, formalar va sahifa ichidagi xabarlar
   ishlaydi; ma’lumotlar sahifa ochiq turganda saqlanadi.
+- **Open source Issue’lari.** GitHub yoki GitLab Issue havolasini joylashtiring
+  va EST’ga uni o‘qishga ruxsat bering: qat’iy qoidalar uning o‘quvchiga mosligini
+  tekshiradi (yopilgan Issue’lar, pull request’lar, arxivlangan repozitoriylar va
+  rad etilgan belgilar qabul qilinmaydi; ijrochi, qisqa tavsif yoki uzun muhokama
+  belgilanadi; *good first issue* va chek-listlar uning foydasiga). Import
+  repozitoriyni ulaydi va vazifa yaratadi — tur va murakkablik belgilardan,
+  chek-list qabul mezonlari sifatida — u boshqalari kabi L0 dan boshlanadi.
+- **Issue va masalalarni tanlash.** Nimani o‘rganmoqchi va yaxshilamoqchi
+  ekaningizni yozing («parserlar qanday ishlashini tushunish va tushunarli
+  xato xabarlarini yozish») yoki bo‘sh qoldiring — model faolligingiz
+  bo‘yicha o‘zi tanlaydi. U faqat qidiruvni rejalashtiradi — so‘zlar, til,
+  teglar, reyting — EST esa GitHub, Codeforces va LeetCode’da o‘zi qidiradi,
+  har bir natijani import qoidalari bilan tekshiradi, olinganlarini chiqarib
+  tashlaydi va modeldan hech qachon havola olmaydi. Topilgani odatdagi
+  importda ochiladi.
+- **Ruxsatingizsiz hech narsa chiqmaydi.** Platforma yoki masalalar saytidan
+  o‘qish shu so‘rov uchun belgi talab qiladi; nashr (Issue’ingizga izoh) har
+  doim avval qoralama bo‘lib, nima va qayerga ketishini ko‘rsatadi va faqat shu
+  qoralamani tasdiqlaganingizda yuboriladi. Mentor buning hech birini qila
+  olmaydi. Tokenlar `config.toml` dagi `[remote]` da nomlangan muhit
+  o‘zgaruvchilaridan olinadi.
 - **Loyihalar va ish kataloglari.** Mahalliy Git repozitoriyni ulash (yoki
   masofaviyni klonlash), tillar va litsenziyani aniqlash, har bir Issue uchun
   `~/.est/workspaces` ichida alohida katalog va tarmoq, muharrirda ochish.
@@ -99,17 +121,29 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   so‘nish bilan o‘rtachalanadi (30 kun / 10 Issue). Engineering Skill Matrix
   ko‘nikmalarni kuzatilgan dalillar bo‘yicha baholaydi — test urinishlari,
   trenajyor natijalari, yakunlangan amaliyot va Issue’lar (testlar, qabul
-  mezonlari, yordam darajalari) — holat, ishonchlilik, o‘lchovlar (nazariya,
-  amaliyot, diagnostika, mustaqillik) va tarix bilan. Darslarni o‘qish dalil
-  hisoblanmaydi, tekshirilmagan ko‘nikma 0 emas, «baholanmagan». Ular mustaqil:
-  ADI bahoga kirmaydi.
+  mezonlari, yordam darajalari, kommitlar sifati) — holat, ishonchlilik,
+  o‘lchovlar (nazariya, amaliyot, diagnostika, ko‘chirish, mustaqillik) va
+  tarix bilan. Issue vazifada nomlangan ko‘nikmalarga yoki vazifa teglari va
+  turidan chiqarilgan ko‘nikmalarga hisoblanadi; *ko‘chirish* — yangi
+  kontekstda qo‘llangan ko‘nikma (dars, keyin masala, keyin haqiqiy loyiha).
+  ADI diff’ingizning qancha qismi mentor ko‘rsatgan kod bilan mos kelishini
+  ham hisobga oladi; model Issue bahosini tushuntira oladi, lekin uni faqat kod
+  qo‘yadi. Darslarni o‘qish dalil hisoblanmaydi, tekshirilmagan ko‘nikma 0
+  emas, «baholanmagan». Ular mustaqil: ADI bahoga kirmaydi.
+- **Git bilan ishlash.** Kommitlaringiz umumiy qoidalar va loyihaning o‘z
+  tarixidan o‘rganilgan kelishuvlar (Conventional Commits, sarlavha uzunligi,
+  sign-off…) bo‘yicha tekshiriladi. Pull request qoralamasi kommitlaringiz,
+  qabul mezonlari va oxirgi test ishga tushirilishidan, tayyorlik chek-listi
+  bilan yig‘iladi; tarmoqni siz yuborasiz, EST esa qoralamani tasdiqlaganingizdan
+  keyin pull request ochadi. Issue muharriri xato haqida xabar yoki imkoniyat
+  so‘rovini nashrdan oldin tekshiradi.
 - **Desktop ilova (Tauri)** Linux, Windows va macOS uchun; xuddi shu interfeys brauzerda ham ishlaydi.
 - **Interfeys rus, ingliz va o‘zbek tillarida**; qorong‘i va yorug‘ mavzular.
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
   suhbatni hodisalari va vazifa ADI’si bilan birga o‘chirish.
 
-Hozircha yo‘q: Session Summary va Knowledge Profile, masala shartlarini saytdan yuklash, dalillar asosida
-ko‘nikmalarni baholash, kommit va PR tekshiruvi, qolgan o‘quv dasturlari.
+Hozircha yo‘q: qolgan o‘quv dasturlari, imzolangan o‘rnatuvchilar, import
+qilingan Issue’larni asl repozitoriyda kuzatish.
 [ROADMAP.md](ROADMAP.md) ga qarang.
 
 ## Tez boshlash

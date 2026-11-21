@@ -129,6 +129,7 @@ impl App {
                         },
                         learning_goals: est_problems::learning_goals(ui),
                         disciplines: vec!["algorithms".into(), "data-structures".into()],
+                        skills: Vec::new(),
                         base_revision: Some(revision),
                         test_command: Some(est_problems::test_command(&problem, lang)),
                         acceptance_criteria: est_problems::acceptance_criteria(&problem, ui),

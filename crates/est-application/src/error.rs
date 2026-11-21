@@ -8,6 +8,9 @@ pub enum AppError {
     Invalid(String),
     #[error("{0}")]
     Conflict(String),
+    /// The learner has to allow network access for this request.
+    #[error("{0}")]
+    PermissionRequired(String),
     /// A port (database, git, filesystem, editor) failed.
     #[error("{0}")]
     Infrastructure(String),

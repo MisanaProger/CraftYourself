@@ -287,6 +287,188 @@ pub fn is_known_skill(discipline: &str, skill: &str) -> bool {
         .any(|d| d.id == discipline && d.skills.iter().any(|s| s.id == skill))
 }
 
+/// `discipline/skill` naming a skill of the catalog.
+pub fn is_skill_ref(r: &str) -> bool {
+    r.split_once('/').is_some_and(|(d, s)| is_known_skill(d, s))
+}
+
+/// Skills a task exercises when it names none: from problem tags (as the
+/// judges spell them, normalized to lowercase) and the task type. Only
+/// unambiguous mappings; everything else stays evidence for the task's
+/// disciplines as a whole.
+pub fn infer_skills(task_type: &str, topics: &[String]) -> Vec<(&'static str, &'static str)> {
+    const TAGS: &[(&[&str], &str, &str)] = &[
+        (
+            &[
+                "dp",
+                "dynamic-programming",
+                "dynamic programming",
+                "greedy",
+                "brute force",
+                "constructive algorithms",
+                "divide and conquer",
+                "divide-and-conquer",
+                "backtracking",
+                "binary search",
+                "binary-search",
+                "two pointers",
+                "two-pointers",
+                "sortings",
+                "sorting",
+                "memoization",
+                "recursion",
+            ],
+            "algorithms",
+            "algorithm-design",
+        ),
+        (
+            &[
+                "graphs",
+                "graph",
+                "dfs and similar",
+                "depth-first-search",
+                "breadth-first-search",
+                "shortest paths",
+                "shortest-path",
+                "dsu",
+                "union-find",
+                "topological-sort",
+                "flows",
+                "graph matchings",
+                "minimum-spanning-tree",
+            ],
+            "data-structures",
+            "graphs",
+        ),
+        (
+            &[
+                "trees",
+                "tree",
+                "binary-tree",
+                "binary-search-tree",
+                "heap-priority-queue",
+            ],
+            "data-structures",
+            "trees-heaps",
+        ),
+        (
+            &["hash-table", "hashing", "hash-function"],
+            "data-structures",
+            "hash-tables",
+        ),
+        (
+            &["stack", "queue", "monotonic-stack", "monotonic-queue"],
+            "data-structures",
+            "stack-queue",
+        ),
+        (
+            &[
+                "array",
+                "prefix-sum",
+                "sliding-window",
+                "linked-list",
+                "matrix",
+            ],
+            "data-structures",
+            "arrays-lists",
+        ),
+        (&["segment-tree"], "data-structures", "segment-tree"),
+        (&["binary-indexed-tree"], "data-structures", "fenwick-tree"),
+        (
+            &["data structures", "trie", "ordered-set"],
+            "data-structures",
+            "specialized",
+        ),
+        (&["combinatorics"], "mathematics", "combinatorics"),
+        (&["geometry"], "mathematics", "geometry"),
+        (
+            &["probabilities", "probability-and-statistics"],
+            "mathematics",
+            "probability-statistics",
+        ),
+        (
+            &[
+                "number theory",
+                "number-theory",
+                "math",
+                "chinese remainder theorem",
+            ],
+            "mathematics",
+            "discrete-logic",
+        ),
+        (
+            &["bitmasks", "bitmask", "bit-manipulation"],
+            "mathematics",
+            "number-representation",
+        ),
+        (&["matrices"], "mathematics", "linear-algebra"),
+    ];
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    let mut push = |d: &'static str, s: &'static str| {
+        if !out.contains(&(d, s)) {
+            out.push((d, s));
+        }
+    };
+    for t in topics {
+        let t = t.trim().to_lowercase();
+        for (tags, d, s) in TAGS {
+            if tags.contains(&t.as_str()) {
+                push(d, s);
+            }
+        }
+    }
+    match task_type {
+        "bug-fix" => push("debugging-testing", "reproduction"),
+        "regression" => push("debugging-testing", "regression"),
+        "testing" => push("debugging-testing", "unit-integration"),
+        "performance" => push("debugging-testing", "profiling"),
+        "refactoring" => push("architecture", "maintainability"),
+        _ => {}
+    }
+    out
+}
+
+/// Where a piece of evidence was observed, for the Transfer dimension:
+/// `lesson` (programs), `problem` (judges) or `project:<id>`.
+pub type Context = String;
+
+/// The lowest Practice score that counts as applying a skill.
+pub const TRANSFER_MIN_SCORE: u8 = 60;
+
+/// Transfer (§11.3): applying a skill in a new context. A completed
+/// practice project or Issue whose Practice score is at least
+/// [`TRANSFER_MIN_SCORE`] gives Transfer evidence (with that score) for each
+/// of its targets that already had evidence, observed earlier, in a
+/// different context — learned in a lesson and used on a problem, used on
+/// problems and then in a real project, or in one project and then another.
+pub fn transfer(evidence: &[(Evidence, Context)]) -> Vec<Evidence> {
+    let mut out: Vec<Evidence> = Vec::new();
+    for (e, ctx) in evidence {
+        let applied = matches!(e.source, EvidenceSource::Practice | EvidenceSource::Issue)
+            && e.dimension == Dimension::Practice
+            && e.score >= TRANSFER_MIN_SCORE;
+        if !applied {
+            continue;
+        }
+        let earlier = evidence.iter().any(|(f, fctx)| {
+            f.observed_at < e.observed_at
+                && fctx != ctx
+                && f.discipline == e.discipline
+                && (f.skill == e.skill || f.skill.is_none() || e.skill.is_none())
+        });
+        let duplicate = out.iter().any(|t| {
+            t.reference == e.reference && t.discipline == e.discipline && t.skill == e.skill
+        });
+        if earlier && !duplicate {
+            out.push(Evidence {
+                dimension: Dimension::Transfer,
+                ..e.clone()
+            });
+        }
+    }
+    out
+}
+
 // ---- assessment evidence (§11.4) -------------------------------------------
 
 /// Where a piece of evidence was observed.
@@ -506,6 +688,76 @@ pub fn matrix(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn infers_skills_from_tags_and_types() {
+        let s = infer_skills("algorithm", &["dp".into(), "Graphs".into(), "magic".into()]);
+        assert_eq!(
+            s,
+            [
+                ("algorithms", "algorithm-design"),
+                ("data-structures", "graphs")
+            ]
+        );
+        assert_eq!(
+            infer_skills("bug-fix", &[]),
+            [("debugging-testing", "reproduction")]
+        );
+        assert!(infer_skills("feature", &[]).is_empty());
+        for (d, sk) in infer_skills(
+            "refactoring",
+            &[
+                "bitmasks".into(),
+                "segment-tree".into(),
+                "hash-table".into(),
+                "matrices".into(),
+                "probabilities".into(),
+            ],
+        ) {
+            assert!(is_known_skill(d, sk), "{d}/{sk}");
+        }
+    }
+
+    #[test]
+    fn transfer_needs_an_earlier_other_context() {
+        let now = est_core::now();
+        let ev = |src, dim, score, reference: &str, days: i64| Evidence {
+            discipline: "algorithms".into(),
+            skill: Some("algorithm-design".into()),
+            source: src,
+            dimension: dim,
+            score,
+            reference: reference.into(),
+            title: reference.into(),
+            observed_at: now - chrono::Duration::days(days),
+        };
+        let lesson = (
+            ev(EvidenceSource::Quiz, Dimension::Theory, 90, "p/l", 10),
+            "lesson".to_owned(),
+        );
+        let problem = (
+            ev(EvidenceSource::Issue, Dimension::Practice, 100, "s1", 5),
+            "problem".to_owned(),
+        );
+        let weak = (
+            ev(EvidenceSource::Issue, Dimension::Practice, 40, "s2", 4),
+            "project:a".to_owned(),
+        );
+        let project = (
+            ev(EvidenceSource::Issue, Dimension::Practice, 80, "s3", 1),
+            "project:a".to_owned(),
+        );
+        let t = transfer(&[lesson.clone(), problem.clone(), weak, project]);
+        let refs: Vec<_> = t.iter().map(|e| (e.reference.as_str(), e.score)).collect();
+        assert_eq!(refs, [("s1", 100), ("s3", 80)]);
+        assert!(t.iter().all(|e| e.dimension == Dimension::Transfer));
+        // The same context only: no transfer.
+        let same = (
+            ev(EvidenceSource::Issue, Dimension::Practice, 100, "s4", 0),
+            "problem".to_owned(),
+        );
+        assert!(transfer(&[problem, same]).is_empty());
+    }
+
     use super::*;
 
     #[test]

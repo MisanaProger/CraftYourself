@@ -35,7 +35,8 @@ export interface CommandSpec {
 export type TaskSource =
   | { type: "manual" }
   | { type: "exercise"; id: string; version: string }
-  | { type: "issue"; url: string };
+  | { type: "issue"; url: string }
+  | { type: "problem"; platform: string; id: string; url: string | null };
 
 export interface Task {
   id: string;
@@ -191,6 +192,8 @@ export interface AdiHistoryItem {
   explanation: string;
   confidence: string;
   created_at: string;
+  /** A model's explanation; it never changes the score. */
+  review: { text: string; model: string; lang: string; created_at: string } | null;
 }
 
 export interface AdiOverview {
@@ -557,6 +560,7 @@ export interface SessionSummary {
   finished_at: string;
   duration_minutes: number;
   commits: number;
+  commit_quality?: number | null;
   help: {
     final_level: Level;
     max_level: Level;
@@ -608,4 +612,167 @@ export interface KnowledgeProfile {
   topics: TopicKnowledge[];
   recent: SessionSummary[];
   note: string;
+}
+
+// ---- forges and judges ----------------------------------------------------
+
+export interface IssueRef {
+  forge: "github" | "gitlab";
+  host: string;
+  project: string;
+  number: number;
+  url: string;
+}
+
+export type FindingSeverity = "good" | "caution" | "blocker";
+
+export interface IssueFinding {
+  code: string;
+  severity: FindingSeverity;
+  detail?: string;
+}
+
+export interface IssuePreview {
+  issue: IssueRef;
+  title: string;
+  labels: string[];
+  open: boolean;
+  comments: number;
+  repository: { clone_url: string; default_branch: string | null; archived: boolean; license: string | null; language: string | null };
+  suitability: { verdict: "suitable" | "caution" | "unsuitable"; findings: IssueFinding[] };
+  task: { title: string; description: string; task_type: TaskType; difficulty: Difficulty; acceptance_criteria: string[]; disciplines: string[] };
+  project_id: string | null;
+  task_id: string | null;
+}
+
+export interface ImportIssue {
+  url: string;
+  allow_network: boolean;
+  project_id?: string;
+  task_type?: TaskType;
+  difficulty?: Difficulty;
+}
+
+export interface FetchedProblem {
+  input: { url: string | null; title: string | null; statement: string; samples: Sample[]; tags: string[]; rating: number | null; difficulty: "easy" | "medium" | "hard" | null };
+  statement_found: boolean;
+}
+
+export type PublishWarning = "mentor_assisted";
+
+export interface PublishPreview {
+  id: string;
+  kind: "issue_comment" | "issue" | "pull_request";
+  host: string;
+  target: string;
+  body: string;
+  digest: string;
+  warnings: PublishWarning[];
+  expires_at: string;
+}
+
+// ---- discovery --------------------------------------------------------------
+
+export interface IssueCandidate {
+  issue: IssueRef;
+  title: string;
+  labels: string[];
+  comments: number;
+  updated_at: string | null;
+  suitability: IssuePreview["suitability"];
+  task_type: TaskType;
+  difficulty: Difficulty;
+  reason: string;
+}
+
+export interface ProblemCandidate {
+  platform: "codeforces" | "leetcode" | "other";
+  id: string;
+  url: string;
+  title: string;
+  tags: string[];
+  rating: number | null;
+  difficulty: "easy" | "medium" | "hard" | null;
+  popularity: number | null;
+  reason: string;
+}
+
+export interface SearchReport {
+  source: "github" | "codeforces" | "leetcode";
+  query: unknown;
+  reason: string;
+  found: number;
+  error: string | null;
+}
+
+export interface Discovery {
+  id: string;
+  created_at: string;
+  model: string;
+  lang: string;
+  goal: string | null;
+  summary: string;
+  issues: IssueCandidate[];
+  problems: ProblemCandidate[];
+  searches: SearchReport[];
+}
+
+export interface DiscoverRequest {
+  goal?: string;
+  issues: boolean;
+  problems: boolean;
+  allow_network: boolean;
+  lang: string;
+}
+
+// ---- Git workflow (stage 9) ---------------------------------------------------
+
+export interface ReviewFinding {
+  code: string;
+  severity: "info" | "warning" | "problem";
+  detail?: string;
+}
+
+export interface CommitReview {
+  hash: string;
+  subject: string;
+  lines_changed: number;
+  files: number;
+  score: number;
+  findings: ReviewFinding[];
+}
+
+export interface Conventions {
+  learned_from: number;
+  conventional: boolean;
+  capitalized: boolean | null;
+  period: boolean;
+  subject_limit: number;
+  signed_off: boolean;
+}
+
+export interface CommitsReview {
+  conventions: Conventions;
+  commits: CommitReview[];
+  score: number | null;
+}
+
+export interface PullRequestView {
+  title: string;
+  body: string;
+  readiness: { code: string; ok: boolean; detail?: string }[];
+  ready: boolean;
+  repository: { forge: "github" | "gitlab"; host: string; project: string } | null;
+  branch: string;
+  base: string | null;
+  can_publish: boolean;
+}
+
+export type IssueTextKind = "bug" | "feature";
+
+export interface IssueTextReview {
+  kind: IssueTextKind;
+  checks: { code: string; ok: boolean }[];
+  score: number;
+  blockers: ReviewFinding[];
 }
