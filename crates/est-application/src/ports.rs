@@ -534,6 +534,26 @@ pub trait RemoteSources: Send + Sync {
     fn can_publish(&self, issue: &est_issues::IssueRef) -> bool;
     /// Publishes a comment on the Issue; returns the comment's link.
     async fn comment(&self, issue: &est_issues::IssueRef, body: &str) -> AppResult<String>;
+    /// Open Issues on GitHub matching the query, newest activity first.
+    async fn search_issues(
+        &self,
+        _query: &est_issues::IssueQuery,
+        _limit: usize,
+    ) -> AppResult<Vec<est_issues::FoundIssue>> {
+        Err(crate::AppError::Invalid(
+            "searching Issues is not configured".into(),
+        ))
+    }
+    /// Problems on the query's platform with its tags (and difficulty);
+    /// the application picks among them.
+    async fn search_problems(
+        &self,
+        _query: &est_problems::search::ProblemQuery,
+    ) -> AppResult<Vec<est_problems::search::FoundProblem>> {
+        Err(crate::AppError::Invalid(
+            "searching problems is not configured".into(),
+        ))
+    }
 }
 
 /// Used when nothing is configured: every call fails.

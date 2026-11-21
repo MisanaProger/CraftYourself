@@ -18,7 +18,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use est_application::ports::{FetchedProblem, RemoteSources};
 use est_application::{AppError, AppResult};
-use est_issues::{Forge, IssueRef, RemoteIssue, RemoteRepository};
+use est_issues::{Forge, FoundIssue, IssueQuery, IssueRef, RemoteIssue, RemoteRepository};
+use est_problems::search::{FoundProblem, ProblemQuery};
 use est_problems::{Platform, ProblemInput, ProblemRef};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -466,6 +467,168 @@ impl RemoteSources for HttpRemote {
             }
         }
     }
+
+    async fn search_issues(&self, q: &IssueQuery, limit: usize) -> AppResult<Vec<FoundIssue>> {
+        let per_page = limit.clamp(1, 30).to_string();
+        let v = self
+            .json(
+                self.github("/search/issues").query(&[
+                    ("q", q.github_q().as_str()),
+                    ("sort", "updated"),
+                    ("order", "desc"),
+                    ("per_page", per_page.as_str()),
+                ]),
+                "issue search",
+            )
+            .await?;
+        Ok(v["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(github_search_item)
+            .collect())
+    }
+
+    async fn search_problems(&self, q: &ProblemQuery) -> AppResult<Vec<FoundProblem>> {
+        match q.platform {
+            Platform::Codeforces => self.codeforces_search(q).await,
+            Platform::Leetcode => self.leetcode_search(q).await,
+            Platform::Other => Ok(Vec::new()),
+        }
+    }
+}
+
+/// One item of GitHub's issue search; pull requests and foreign links are
+/// skipped. The search only covers repositories that are not archived.
+fn github_search_item(item: &Value) -> Option<FoundIssue> {
+    if item.get("pull_request").is_some_and(|p| !p.is_null()) {
+        return None;
+    }
+    let issue = est_issues::parse_issue_url(item["html_url"].as_str()?, &[]).ok()?;
+    let remote = RemoteIssue {
+        title: text(&item["title"]),
+        body: text(&item["body"]),
+        open: item["state"] == "open",
+        labels: item["labels"]
+            .as_array()
+            .map(|a| a.iter().map(|l| text(&l["name"])).collect())
+            .unwrap_or_default(),
+        assignees: item["assignees"].as_array().map_or(0, |a| a.len() as u32),
+        comments: item["comments"].as_u64().unwrap_or(0) as u32,
+        pull_request: false,
+        locked: item["locked"].as_bool().unwrap_or(false),
+        created_at: time(&item["created_at"]),
+        updated_at: time(&item["updated_at"]),
+        repository: RemoteRepository {
+            clone_url: issue.clone_url(),
+            default_branch: None,
+            archived: false,
+            license: None,
+            language: None,
+        },
+    };
+    Some(FoundIssue { issue, remote })
+}
+
+impl HttpRemote {
+    async fn codeforces_search(&self, q: &ProblemQuery) -> AppResult<Vec<FoundProblem>> {
+        let base = &self.config.endpoints.codeforces;
+        let mut req = self.client.get(format!("{base}/api/problemset.problems"));
+        if !q.tags.is_empty() {
+            req = req.query(&[("tags", q.tags.join(";"))]);
+        }
+        let v = self.json(req, "problem search").await?;
+        if v["status"] != "OK" {
+            return Err(infra(format!(
+                "problem search: {}",
+                v["comment"].as_str().unwrap_or("Codeforces refused")
+            )));
+        }
+        let solved: std::collections::HashMap<String, u64> = v["result"]["problemStatistics"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|s| {
+                Some((
+                    format!("{}{}", s["contestId"].as_u64()?, s["index"].as_str()?),
+                    s["solvedCount"].as_u64()?,
+                ))
+            })
+            .collect();
+        Ok(v["result"]["problems"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| {
+                let contest = p["contestId"].as_u64()?;
+                let index = p["index"].as_str()?;
+                let id = format!("{contest}{index}");
+                Some(FoundProblem {
+                    platform: Platform::Codeforces,
+                    url: format!("https://codeforces.com/problemset/problem/{contest}/{index}"),
+                    title: text(&p["name"]),
+                    tags: p["tags"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|t| t.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    rating: p["rating"].as_u64().map(|r| r as u32),
+                    difficulty: None,
+                    popularity: solved.get(&id).copied(),
+                    paid_only: false,
+                    id,
+                })
+            })
+            .collect())
+    }
+
+    async fn leetcode_search(&self, q: &ProblemQuery) -> AppResult<Vec<FoundProblem>> {
+        let base = &self.config.endpoints.leetcode;
+        let query = "query list($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) { problemsetQuestionList: questionList(categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters) { questions: data { acRate difficulty paidOnly: isPaidOnly title titleSlug topicTags { slug } } } }";
+        let mut filters = serde_json::Map::new();
+        if let Some(d) = &q.difficulty {
+            filters.insert("difficulty".into(), json!(d.to_ascii_uppercase()));
+        }
+        if !q.tags.is_empty() {
+            filters.insert("tags".into(), json!(q.tags));
+        }
+        let v = self
+            .json(
+                self.client
+                    .post(format!("{base}/graphql"))
+                    .header("referer", format!("{base}/problemset/"))
+                    .json(&json!({ "query": query, "variables": {
+                        "categorySlug": "algorithms", "limit": 100, "skip": 0, "filters": filters,
+                    }})),
+                "problem search",
+            )
+            .await?;
+        Ok(v["data"]["problemsetQuestionList"]["questions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| {
+                let slug = p["titleSlug"].as_str()?.to_owned();
+                Some(FoundProblem {
+                    platform: Platform::Leetcode,
+                    url: format!("https://leetcode.com/problems/{slug}/"),
+                    title: text(&p["title"]),
+                    tags: p["topicTags"]
+                        .as_array()
+                        .map(|a| a.iter().map(|t| text(&t["slug"])).collect())
+                        .unwrap_or_default(),
+                    rating: None,
+                    difficulty: p["difficulty"].as_str().map(str::to_ascii_lowercase),
+                    popularity: p["acRate"].as_f64().map(|r| r.round() as u64),
+                    paid_only: p["paidOnly"].as_bool().unwrap_or(false),
+                    id: slug,
+                })
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -556,6 +719,73 @@ mod tests {
             remote(&base, None).issue(&other).await,
             Err(AppError::NotFound(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn searches_issues_and_problems() {
+        #[derive(Deserialize)]
+        struct S {
+            q: Option<String>,
+            tags: Option<String>,
+        }
+        let app = Router::new()
+            .route(
+                "/search/issues",
+                get(|Query(s): Query<S>| async move {
+                    let q = s.q.unwrap();
+                    assert!(q.starts_with("parser is:issue is:open no:assignee"), "{q}");
+                    Json(json!({ "items": [
+                        { "html_url": "https://github.com/o/r/issues/3", "title": "Bad error", "body": "x",
+                          "state": "open", "labels": [{ "name": "good first issue" }], "comments": 0 },
+                        { "html_url": "https://github.com/o/r/pull/4", "title": "PR", "state": "open",
+                          "pull_request": { "url": "x" } }
+                    ]}))
+                }),
+            )
+            .route(
+                "/api/problemset.problems",
+                get(|Query(s): Query<S>| async move {
+                    assert_eq!(s.tags.as_deref(), Some("dp;greedy"));
+                    Json(json!({ "status": "OK", "result": {
+                        "problems": [{ "contestId": 1, "index": "A", "name": "One", "rating": 1200, "tags": ["dp"] }],
+                        "problemStatistics": [{ "contestId": 1, "index": "A", "solvedCount": 77 }]
+                    }}))
+                }),
+            )
+            .route(
+                "/graphql",
+                post(|Json(body): Json<Value>| async move {
+                    assert_eq!(body["variables"]["filters"]["difficulty"], "EASY");
+                    Json(json!({ "data": { "problemsetQuestionList": { "questions": [
+                        { "acRate": 55.4, "difficulty": "Easy", "paidOnly": false, "title": "Two Sum",
+                          "titleSlug": "two-sum", "topicTags": [{ "slug": "array" }] }
+                    ]}}}))
+                }),
+            );
+        let base = serve(app).await;
+        let r = remote(&base, None);
+        let q = IssueQuery::new(&["parser".into()], None, false).unwrap();
+        let found = r.search_issues(&q, 10).await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].issue.number, 3);
+        assert_eq!(
+            found[0].remote.repository.clone_url,
+            "https://github.com/o/r.git"
+        );
+        let cf = r
+            .search_problems(&ProblemQuery::codeforces(
+                &["dp".into(), "greedy".into()],
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!((cf[0].id.as_str(), cf[0].popularity), ("1A", Some(77)));
+        let lc = r
+            .search_problems(&ProblemQuery::leetcode(&[], Some("easy")))
+            .await
+            .unwrap();
+        assert_eq!((lc[0].id.as_str(), lc[0].popularity), ("two-sum", Some(55)));
+        assert_eq!(lc[0].difficulty.as_deref(), Some("easy"));
     }
 
     #[tokio::test]
