@@ -55,6 +55,9 @@ pub struct ExerciseInfo {
     #[serde(default)]
     /// Discipline ids from the Engineering Skill Matrix catalog.
     pub disciplines: Vec<String>,
+    /// Skills the exercise trains, as `discipline/skill`.
+    #[serde(default)]
+    pub skills: Vec<String>,
     /// Observable conditions under which the exercise counts as done.
     #[serde(default)]
     pub acceptance_criteria: Vec<String>,
@@ -242,6 +245,13 @@ impl ExerciseManifest {
                 errors.push(format!("exercise.disciplines: unknown discipline `{d}`"));
             }
         }
+        for s in &ex.skills {
+            if !est_discipline::is_skill_ref(s) {
+                errors.push(format!(
+                    "exercise.skills: `{s}` is not a `discipline/skill` from the catalog"
+                ));
+            }
+        }
 
         let src = &self.source;
         match Url::parse(&src.repository) {
@@ -354,6 +364,7 @@ impl ExerciseManifest {
             },
             learning_goals: ex.learning_goals.clone(),
             disciplines: ex.disciplines.clone(),
+            skills: ex.skills.clone(),
             base_revision: Some(self.source.revision.clone()),
             test_command: Some(self.commands.test.clone()),
             acceptance_criteria: ex.acceptance_criteria.clone(),

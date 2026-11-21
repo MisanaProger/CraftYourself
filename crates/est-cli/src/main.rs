@@ -517,6 +517,7 @@ async fn run(ctx: &Ctx, command: Command) -> Result<()> {
                     source: TaskSource::Manual,
                     learning_goals: vec![],
                     disciplines: vec![],
+                    skills: vec![],
                     base_revision: c.base,
                     test_command: None,
                     acceptance_criteria: vec![],

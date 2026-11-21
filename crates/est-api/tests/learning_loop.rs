@@ -82,6 +82,21 @@ fn generated_content(system: &str, request: &str, attempt: usize) -> Option<Stri
             { "text": "DFS uses a", "options": ["stack", "queue"], "answer": 0, "explanation": "LIFO" }
         ]})
         .to_string()
+    } else if system.starts_with("You explain an AI Dependency Index") {
+        let score = request
+            .split("ADI score (computed by code): ")
+            .nth(1)
+            .and_then(|r| r.lines().next())
+            .unwrap_or("?")
+            .to_owned();
+        // The first answer claims another score and is rejected.
+        if attempt == 0 {
+            "Your ADI is 3/100, excellent work on this Issue, keep going like that.".to_owned()
+        } else {
+            format!(
+                "The score is {score}/100: code the mentor showed ended up in your commit. Next time write the fix yourself first."
+            )
+        }
     } else if system.starts_with("You help a learner of Craft Yourself") {
         // Echo whether a goal was given, so the test sees what was sent.
         let goal = request.contains("parsers");
@@ -863,7 +878,7 @@ async fn full_learning_loop() {
     assert_eq!(adi["aggregate"]["issues"], 1);
     assert_eq!(adi["aggregate"]["provisional"], true);
     let item = &adi["history"][0];
-    assert_eq!(item["scoring_version"], "observed-0.1");
+    assert_eq!(item["scoring_version"], "observed-0.2");
     assert_eq!(
         item["observed_features"]["answers_by_level"],
         json!([1, 0, 1, 0, 0])
@@ -917,13 +932,15 @@ async fn full_learning_loop() {
             .iter()
             .all(|e| e["source"] == "issue")
     );
-    assert!(
-        dt["skills"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|s| s["score"].is_null() && s["status"] == "not_assessed")
-    );
+    // A bug fix is evidence for reproducing bugs; other skills stay
+    // not assessed (never zero).
+    for skill in dt["skills"].as_array().unwrap() {
+        if skill["id"] == "reproduction" {
+            assert_eq!(skill["status"], "insufficient_evidence", "{skill}");
+        } else {
+            assert!(skill["score"].is_null() && skill["status"] == "not_assessed");
+        }
+    }
 
     // Privacy: provider shown, export contains the history, delete removes it.
     let (_, p) = h.get("/api/v1/settings/privacy").await;
@@ -2471,4 +2488,163 @@ async fn git_workflow_reviews_commits_and_publishes_confirmed_pull_requests() {
         summary["commit_quality"].as_u64().unwrap() < 100,
         "{summary}"
     );
+}
+
+#[tokio::test]
+async fn skills_transfer_copied_code_and_explained_adi() {
+    let h = harness().await;
+    let pid = h.new_project().await["id"].as_str().unwrap().to_owned();
+    // An unknown skill is refused.
+    let (s, _) = h
+        .post(
+            "/api/v1/tasks",
+            json!({ "project_id": pid, "title": "x", "task_type": "testing", "difficulty": "beginner",
+                    "skills": ["debugging-testing/telepathy"] }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, task) = h
+        .post(
+            "/api/v1/tasks",
+            json!({ "project_id": pid, "title": "Test parse_range", "task_type": "testing",
+                    "difficulty": "beginner", "base_revision": h.revision,
+                    "disciplines": ["debugging-testing"],
+                    "skills": ["debugging-testing/unit-integration"],
+                    "mentor": { "max_level": 4, "denied_paths": [] } }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+    assert_eq!(
+        task["skills"],
+        json!(["debugging-testing/unit-integration"])
+    );
+    let tid = task["id"].as_str().unwrap().to_owned();
+
+    // First seen in a lesson (any result counts as having met the skill).
+    h.post(
+        "/api/v1/learning/programs/testing/lessons/read-output/quiz",
+        json!({ "answers": {} }),
+    )
+    .await;
+
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let conv = started["conversation_id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+    for _ in 0..3 {
+        h.post(
+            &format!("/api/v1/conversations/{conv}/engagement/raise"),
+            json!({}),
+        )
+        .await;
+    }
+    assert_eq!(h.level(&conv).await, 3);
+    *h.llm.reply.lock().unwrap() = Some(
+        "Try this:\n```rust\nlet (start, end) = s.split_once(\"..\")?;\nlet first: u32 = start.parse().ok()?;\n```".into(),
+    );
+    let replies = h.say(&conv, "Покажи пример исправления").await;
+    assert!(
+        replies
+            .iter()
+            .any(|m| m["content"].as_str().unwrap_or("").contains("split_once"))
+    );
+
+    // The learner's commit contains the two lines the mentor showed.
+    let repo = Repo::open(&ws);
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        "pub fn parse_range(s: &str) -> Option<Vec<u32>> {\n    let (start, end) = s.split_once(\"..\")?;\n    let first: u32 = start.parse().ok()?;\n    let last: u32 = end.parse().ok()?;\n    let values: Vec<u32> = (first..last).collect();\n    Some(values)\n}\n\n#[test]\nfn open_range_is_none() {\n    assert_eq!(parse_range(\"5..\"), None);\n}\n",
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit(
+        "Return None for an open range\n\nAdd a test for it.",
+        &learner(),
+    )
+    .unwrap();
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // ADI: the copied share is an observed factor.
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    let a = &adi["history"][0];
+    assert_eq!(a["scoring_version"], "observed-0.2");
+    assert_eq!(a["observed_features"]["copied_lines"], 2);
+    assert!(
+        a["factors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["code"] == "copied_code"),
+        "{a}"
+    );
+    let score = a["score"].as_u64().unwrap();
+
+    // The model explains the score; an answer with another score is rejected.
+    let (s, explained) = h
+        .post(
+            &format!("/api/v1/analytics/adi/{tid}/explain"),
+            json!({ "lang": "en" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{explained}");
+    assert_eq!(explained["score"], score);
+    assert!(
+        explained["review"]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("The score is {score}/100"))
+    );
+    let (_, adi) = h.get("/api/v1/analytics/adi").await;
+    assert_eq!(adi["history"][0]["review"]["model"], "fake/fake-1");
+    assert_eq!(adi["history"][0]["score"], score);
+
+    // Skill Matrix: the named skill, with Transfer (lesson → project), and
+    // the commits as Git practice.
+    let (_, m) = h.get("/api/v1/analytics/disciplines?lang=en").await;
+    let disc = |id: &str| {
+        m["disciplines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let dt = disc("debugging-testing");
+    let unit = dt["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "unit-integration")
+        .unwrap();
+    let dims: Vec<_> = unit["dimensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["dimension"].as_str().unwrap())
+        .collect();
+    assert!(
+        dims.contains(&"practice") && dims.contains(&"transfer"),
+        "{dims:?}"
+    );
+    let git = disc("git");
+    let commits = git["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "commits")
+        .unwrap();
+    assert_eq!(commits["score"], 100, "{commits}");
 }

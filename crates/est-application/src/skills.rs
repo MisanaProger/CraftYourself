@@ -7,6 +7,12 @@
 //!   Practice (last test run and acceptance criteria), Diagnosis (failing
 //!   tests fixed) and Independence (highest help level used).
 //!
+//! Issues give evidence for the skills the task names (exercise manifests,
+//! `skills`), or else for skills inferred from problem tags and the task
+//! type, and for the task's disciplines as a whole. A reviewed commit history
+//! (stage 9) is Practice evidence for `git/commits`. Transfer — applying a
+//! skill in a new context — is derived by [`est_discipline::transfer`].
+//!
 //! Reading a lesson, abandoning an Issue or a missing measurement is not
 //! evidence. The ADI is never an input: ADI and the Skill Matrix stay
 //! independent. Scores and statuses are computed by
@@ -92,6 +98,43 @@ pub fn session_evidence(
     out
 }
 
+/// Skills an Issue gives evidence for: those the task names, or else those
+/// inferred from its tags and type; plus its disciplines not covered by a
+/// skill, as a whole.
+fn issue_targets(s: &SessionSummary, task: Option<&est_domain::Task>) -> Targets {
+    let mut targets: Targets = Vec::new();
+    let named: Vec<(String, String)> = task
+        .map(|t| {
+            t.skills
+                .iter()
+                .filter_map(|r| r.split_once('/'))
+                .map(|(d, k)| (d.to_owned(), k.to_owned()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let skills: Vec<(String, String)> = if named.is_empty() {
+        let kind = serde_json::to_value(s.task_type)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        est_discipline::infer_skills(&kind, &s.topics)
+            .into_iter()
+            .map(|(d, k)| (d.to_owned(), k.to_owned()))
+            .collect()
+    } else {
+        named
+    };
+    for (d, k) in &skills {
+        targets.push((d.clone(), Some(k.clone())));
+    }
+    for d in &s.disciplines {
+        if !skills.iter().any(|(sd, _)| sd == d) {
+            targets.push((d.clone(), None));
+        }
+    }
+    targets
+}
+
 /// Skills a lesson names, or its program's disciplines as a whole.
 fn lesson_targets(program: &est_learning::Program, lesson: &est_learning::LessonDef) -> Targets {
     let refs = lesson.skill_refs();
@@ -153,7 +196,7 @@ impl App {
             });
         }
 
-        let mut evidence = Vec::new();
+        let mut evidence: Vec<(Evidence, est_discipline::Context)> = Vec::new();
         for r in &results {
             let Some(prog) = program(&r.program_id) else {
                 continue;
@@ -166,16 +209,19 @@ impl App {
                 _ => Dimension::Practice,
             };
             for (discipline, skill) in lesson_targets(&prog, lesson) {
-                evidence.push(Evidence {
-                    discipline,
-                    skill,
-                    source: r.source,
-                    dimension,
-                    score: r.score,
-                    reference: format!("{}/{}", r.program_id, r.lesson_id),
-                    title: pick(&lesson.title, lang),
-                    observed_at: r.observed_at,
-                });
+                evidence.push((
+                    Evidence {
+                        discipline,
+                        skill,
+                        source: r.source,
+                        dimension,
+                        score: r.score,
+                        reference: format!("{}/{}", r.program_id, r.lesson_id),
+                        title: pick(&lesson.title, lang),
+                        observed_at: r.observed_at,
+                    },
+                    "lesson".to_owned(),
+                ));
             }
         }
 
@@ -194,16 +240,52 @@ impl App {
                 practice.insert(task.to_owned(), lesson_targets(&prog, lesson));
             }
         }
+        let tasks: BTreeMap<String, est_domain::Task> = self
+            .ports
+            .tasks
+            .list(None)
+            .await?
+            .into_iter()
+            .map(|t| (t.id.to_string(), t))
+            .collect();
         for s in self.backfill_summaries().await? {
-            let (source, targets) = match practice.get(s.task_id.as_str()) {
-                Some(t) => (EvidenceSource::Practice, t.clone()),
+            let task = tasks.get(s.task_id.as_str());
+            let (source, targets, context) = match practice.get(s.task_id.as_str()) {
+                Some(t) => (EvidenceSource::Practice, t.clone(), "lesson".to_owned()),
                 None => (
                     EvidenceSource::Issue,
-                    s.disciplines.iter().map(|d| (d.clone(), None)).collect(),
+                    issue_targets(&s, task),
+                    match task {
+                        Some(t) if matches!(t.source, est_domain::TaskSource::Problem { .. }) => {
+                            "problem".to_owned()
+                        }
+                        Some(t) => format!("project:{}", t.project_id),
+                        None => format!("task:{}", s.task_id),
+                    },
                 ),
             };
-            evidence.extend(session_evidence(&s, source, &targets));
+            for e in session_evidence(&s, source, &targets) {
+                evidence.push((e, context.clone()));
+            }
+            if let (true, Some(q)) = (s.is_completed(), s.commit_quality) {
+                evidence.push((
+                    Evidence {
+                        discipline: "git".into(),
+                        skill: Some("commits".into()),
+                        source,
+                        dimension: Dimension::Practice,
+                        score: q,
+                        reference: s.session_id.to_string(),
+                        title: s.task_title.clone(),
+                        observed_at: s.finished_at,
+                    },
+                    context.clone(),
+                ));
+            }
         }
+        let transfer = est_discipline::transfer(&evidence);
+        let mut evidence: Vec<Evidence> = evidence.into_iter().map(|(e, _)| e).collect();
+        evidence.extend(transfer);
         evidence.sort_by_key(|e| e.observed_at);
         Ok(evidence)
     }

@@ -274,6 +274,7 @@ impl App {
                 },
                 learning_goals: Vec::new(),
                 disciplines: draft.disciplines,
+                skills: Vec::new(),
                 base_revision: None,
                 test_command: None,
                 acceptance_criteria: draft.acceptance_criteria,

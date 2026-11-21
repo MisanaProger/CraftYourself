@@ -166,6 +166,10 @@ pub fn api() -> Router<Runtime> {
         .route("/recommendations/activity", get(recommendations::activity))
         .route("/analytics/adi", get(analytics::adi))
         .route("/analytics/adi/history", get(analytics::adi_history))
+        .route(
+            "/analytics/adi/{task}/explain",
+            post(analytics::explain_adi),
+        )
         .route("/analytics/disciplines", get(analytics::disciplines))
         .route("/analytics/skills", get(analytics::skills))
         .route("/data/export", post(analytics::export))

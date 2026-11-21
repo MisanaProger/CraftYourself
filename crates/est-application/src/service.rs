@@ -293,6 +293,15 @@ impl App {
         {
             return Err(AppError::Invalid(format!("unknown discipline `{d}`")));
         }
+        if let Some(s) = task
+            .skills
+            .iter()
+            .find(|s| !est_discipline::is_skill_ref(s))
+        {
+            return Err(AppError::Invalid(format!(
+                "`{s}` is not a `discipline/skill` from the Skill Matrix catalog"
+            )));
+        }
         let project = self.get_project(&task.project_id).await?;
         if let Some(rev) = task.base_revision.clone() {
             self.resolve_in_project(&project, &rev).await?;

@@ -12,7 +12,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub const SCORING_VERSION: &str = "observed-0.1";
+pub const SCORING_VERSION: &str = "observed-0.2";
 
 /// Decay parameters (preliminary MVP values, configurable).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -59,7 +59,65 @@ pub struct ObservedFeatures {
     pub user_messages: u32,
     /// Highest engagement level reached.
     pub max_level: u8,
+    /// Significant lines the learner added (diff against the base).
+    #[serde(default)]
+    pub added_lines: u32,
+    /// Of those, lines that appear verbatim in code the mentor showed.
+    #[serde(default)]
+    pub copied_lines: u32,
 }
+
+/// A code line as compared: trimmed, inner whitespace collapsed. Lines
+/// with fewer than [`MIN_LINE_CHARS`] non-space characters (braces,
+/// `else`, `}` …) or without a letter are not significant.
+pub fn significant_line(line: &str) -> Option<String> {
+    let norm = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars = norm.chars().filter(|c| !c.is_whitespace()).count();
+    (chars >= MIN_LINE_CHARS && norm.chars().any(char::is_alphabetic)).then_some(norm)
+}
+
+pub const MIN_LINE_CHARS: usize = 12;
+
+/// Significant lines inside fenced code blocks of a Markdown answer.
+pub fn shown_code_lines(markdown: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            inside = !inside;
+            continue;
+        }
+        if inside && let Some(l) = significant_line(line) {
+            out.push(l);
+        }
+    }
+    out
+}
+
+/// `(added, copied)`: significant lines added in a unified diff, and how
+/// many of them appear among `shown` lines.
+pub fn copied_lines(diff: &str, shown: &std::collections::HashSet<String>) -> (u32, u32) {
+    let mut added = 0;
+    let mut copied = 0;
+    for line in diff.lines() {
+        let Some(l) = line.strip_prefix('+') else {
+            continue;
+        };
+        if line.starts_with("+++") {
+            continue;
+        }
+        if let Some(l) = significant_line(l) {
+            added += 1;
+            if shown.contains(&l) {
+                copied += 1;
+            }
+        }
+    }
+    (added, copied)
+}
+
+/// Below this many added lines the copied share says little.
+pub const MIN_ADDED_LINES: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Factor {
@@ -160,6 +218,19 @@ pub fn score_issue(f: &ObservedFeatures) -> IssueScore {
         "rejected_escalations",
         "отклонённые повышения уровня",
     );
+
+    if f.added_lines >= MIN_ADDED_LINES && f.copied_lines > 0 {
+        let share = f64::from(f.copied_lines) / f64::from(f.added_lines);
+        factors.push(Factor {
+            code: "copied_code".into(),
+            count: f.copied_lines,
+            description: format!(
+                "строки решения, совпадающие с кодом ментора: {} из {}",
+                f.copied_lines, f.added_lines
+            ),
+            points: (share * 40.0).clamp(0.0, 40.0),
+        });
+    }
 
     let raw: f64 = 15.0 + factors.iter().map(|x| x.points).sum::<f64>();
     let score = raw.round().clamp(0.0, 100.0) as u8;
@@ -292,6 +363,36 @@ impl GameStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copied_code_raises_adi() {
+        let answer =
+            "Try:\n```rust\nlet (a, b) = s.split_once(\"..\")?;\n}\n```\ntext line that is long";
+        let shown: std::collections::HashSet<String> =
+            shown_code_lines(answer).into_iter().collect();
+        assert_eq!(shown.len(), 1);
+        let diff = "+++ b/src/lib.rs\n+    let (a,   b) = s.split_once(\"..\")?;\n+}\n+    let n: u32 = a.parse().map_err(|_| Err)?;\n-old line removed here\n+    let m: u32 = b.parse().map_err(|_| Err)?;\n+    Ok((n..m).collect::<Vec<_>>())\n+    // a comment about the range\n";
+        assert_eq!(copied_lines(diff, &shown), (5, 1));
+        let base = ObservedFeatures {
+            added_lines: 5,
+            ..Default::default()
+        };
+        let copied = ObservedFeatures {
+            copied_lines: 5,
+            ..base.clone()
+        };
+        let a = score_issue(&base);
+        let b = score_issue(&copied);
+        assert_eq!(b.score, a.score + 40);
+        assert!(b.factors.iter().any(|f| f.code == "copied_code"));
+        // Too little code: no factor.
+        let small = ObservedFeatures {
+            added_lines: 2,
+            copied_lines: 2,
+            ..Default::default()
+        };
+        assert!(score_issue(&small).factors.is_empty());
+    }
     use chrono::Duration;
 
     fn p() -> DecayParams {

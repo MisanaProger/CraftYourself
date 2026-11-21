@@ -8,11 +8,12 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use est_application::ports::{
-    AdiAssessment, AdiRepository, ConversationRepository, DataExporter, DiscoveryRepository,
-    EngagementRepository, EventLog, GeneratedProgramRecord, GeneratedProgramRepository,
-    LearningProgressRepository, LessonProgress, LessonResult, LessonResultRepository,
-    ProjectRepository, RecommendationRepository, RecommendationSet, SandboxRunRepository,
-    SessionRepository, SessionSummaryRepository, StoredEvent, TaskRepository, User, UserRepository,
+    AdiAssessment, AdiRepository, AdiReview, ConversationRepository, DataExporter,
+    DiscoveryRepository, EngagementRepository, EventLog, GeneratedProgramRecord,
+    GeneratedProgramRepository, LearningProgressRepository, LessonProgress, LessonResult,
+    LessonResultRepository, ProjectRepository, RecommendationRepository, RecommendationSet,
+    SandboxRunRepository, SessionRepository, SessionSummaryRepository, StoredEvent, TaskRepository,
+    User, UserRepository,
 };
 use est_application::{AppError, AppResult, Discovery};
 use est_core::{
@@ -163,6 +164,7 @@ fn task_from_row(r: &SqliteRow) -> AppResult<Task> {
         learning_goals: from_json("learning goals", r.get("learning_goals"))?,
         // Column `skills` holds the task's ESM discipline ids.
         disciplines: from_json("disciplines", r.get("skills"))?,
+        skills: from_json("skills", r.get("skill_refs"))?,
         base_revision: r.get("base_revision"),
         test_command: r.get("test_command"),
         acceptance_criteria: from_json("acceptance criteria", r.get("acceptance_criteria"))?,
@@ -300,8 +302,8 @@ impl TaskRepository for SqliteStore {
         sqlx::query(
             "INSERT INTO tasks (id, project_id, title, description, task_type, difficulty, status, source, \
              exercise_id, exercise_version, learning_goals, skills, base_revision, test_command, mentor, docs, created_at, \
-             acceptance_criteria) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             acceptance_criteria, skill_refs) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id.as_str())
         .bind(t.project_id.as_str())
@@ -326,6 +328,7 @@ impl TaskRepository for SqliteStore {
                 .map(|text| est_domain::AcceptanceCriterion { text: text.clone(), done: false })
                 .collect::<Vec<_>>(),
         ))
+        .bind(to_json(&t.skills))
         .execute(&self.pool)
         .await
         .map_err(db)?;
@@ -881,6 +884,10 @@ fn adi_from_row(r: &SqliteRow) -> AppResult<AdiAssessment> {
         confidence: r.get("confidence"),
         created_at: r.get("created_at"),
         sequence: r.get("sequence"),
+        review: r
+            .get::<Option<String>, _>("review")
+            .map(|s| from_json("ADI review", &s))
+            .transpose()?,
     })
 }
 
@@ -912,6 +919,19 @@ impl AdiRepository for SqliteStore {
         let saved = adi_from_row(&row)?;
         tx.commit().await.map_err(db)?;
         Ok(saved)
+    }
+
+    async fn set_review(&self, task: &TaskId, review: &AdiReview) -> AppResult<()> {
+        let done = sqlx::query("UPDATE adi_assessments SET review = ? WHERE task_id = ?")
+            .bind(to_json(review))
+            .bind(task.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(db)?;
+        if done.rows_affected() == 0 {
+            return Err(AppError::NotFound("ADI assessment".into()));
+        }
+        Ok(())
     }
 
     async fn list(&self) -> AppResult<Vec<AdiAssessment>> {
@@ -1483,6 +1503,7 @@ mod tests {
                 },
                 learning_goals: vec!["goal".into()],
                 disciplines: vec!["debugging-testing".into()],
+                skills: vec!["debugging-testing/regression".into()],
                 base_revision: None,
                 test_command: Some("cargo test".into()),
                 acceptance_criteria: vec!["Tests pass".into()],
@@ -1717,11 +1738,27 @@ mod tests {
             confidence: "low".into(),
             created_at: now,
             sequence: 0,
+            review: None,
         };
         let first = AdiRepository::save(&s, &adi).await.unwrap();
+        let review = AdiReview {
+            text: "Mostly own work.".into(),
+            model: "m".into(),
+            lang: "en".into(),
+            created_at: now,
+        };
+        AdiRepository::set_review(&s, &t.id, &review).await.unwrap();
+        assert_eq!(
+            AdiRepository::list(&s).await.unwrap()[0].review,
+            Some(review)
+        );
         let second = AdiRepository::save(&s, &AdiAssessment { score: 40, ..adi })
             .await
             .unwrap();
+        assert_eq!(
+            second.review, None,
+            "a new assessment clears the explanation"
+        );
         assert!(second.sequence > first.sequence);
         assert_eq!(
             AdiRepository::list(&s).await.unwrap().len(),

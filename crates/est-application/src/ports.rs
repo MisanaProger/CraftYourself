@@ -241,6 +241,19 @@ pub struct AdiAssessment {
     pub created_at: est_core::Timestamp,
     /// Completion order, used to break timestamp ties.
     pub sequence: i64,
+    /// A model's explanation of the score; never changes it.
+    #[serde(default)]
+    pub review: Option<AdiReview>,
+}
+
+/// Text a model wrote about an ADI that code computed.
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
+pub struct AdiReview {
+    pub text: String,
+    /// `provider/model`.
+    pub model: String,
+    pub lang: String,
+    pub created_at: est_core::Timestamp,
 }
 
 #[async_trait]
@@ -248,6 +261,8 @@ pub trait AdiRepository: Send + Sync {
     /// Replaces any earlier assessment of the same task.
     async fn save(&self, assessment: &AdiAssessment) -> AppResult<AdiAssessment>;
     async fn list(&self) -> AppResult<Vec<AdiAssessment>>;
+    /// Attaches a model's explanation to the task's assessment.
+    async fn set_review(&self, task: &TaskId, review: &AdiReview) -> AppResult<()>;
 }
 
 /// Everything stored about the user, for export (v0.3 §20).
