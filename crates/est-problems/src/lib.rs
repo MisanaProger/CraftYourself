@@ -19,6 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod html;
+pub mod search;
 
 pub const MAX_STATEMENT_BYTES: usize = 24 * 1024;
 pub const MAX_SAMPLES: usize = 10;

@@ -608,3 +608,243 @@ mod tests {
         assert_eq!(t(&["enhancement"]), TaskType::Feature);
     }
 }
+
+// ---- search ------------------------------------------------------------------
+
+/// Languages a search may be narrowed to: id → GitHub's name.
+pub const SEARCH_LANGUAGES: &[(&str, &str)] = &[
+    ("rust", "Rust"),
+    ("python", "Python"),
+    ("c", "C"),
+    ("cpp", "C++"),
+    ("javascript", "JavaScript"),
+    ("typescript", "TypeScript"),
+    ("go", "Go"),
+    ("java", "Java"),
+    ("kotlin", "Kotlin"),
+    ("csharp", "C#"),
+    ("ruby", "Ruby"),
+    ("swift", "Swift"),
+    ("php", "PHP"),
+    ("haskell", "Haskell"),
+    ("scala", "Scala"),
+    ("zig", "Zig"),
+    ("elixir", "Elixir"),
+    ("dart", "Dart"),
+    ("lua", "Lua"),
+    ("shell", "Shell"),
+];
+
+pub const MAX_KEYWORDS: usize = 3;
+
+/// A search for open Issues, built from validated parts only: the query
+/// string with its qualifiers is assembled here, never taken from a model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueQuery {
+    pub keywords: Vec<String>,
+    /// An id from [`SEARCH_LANGUAGES`].
+    pub language: Option<String>,
+    /// Only Issues labelled for newcomers or asking for help.
+    pub beginner: bool,
+}
+
+/// Letters, digits, spaces and `-_.+#`; at most 40 characters. Quotes,
+/// colons and the like are dropped so a keyword cannot add qualifiers.
+pub fn clean_keyword(k: &str) -> Option<String> {
+    let k: String = k
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.' | '+' | '#'))
+        .take(40)
+        .collect();
+    let k = k.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lowered = k.to_ascii_lowercase();
+    // Search operators.
+    if k.is_empty() || matches!(lowered.as_str(), "or" | "and" | "not") {
+        return None;
+    }
+    Some(k)
+}
+
+impl IssueQuery {
+    /// Cleans the parts; `None` when nothing is left to search for.
+    pub fn new(keywords: &[String], language: Option<&str>, beginner: bool) -> Option<Self> {
+        let mut kw: Vec<String> = Vec::new();
+        for k in keywords.iter().filter_map(|k| clean_keyword(k)) {
+            if !kw.iter().any(|x| x.eq_ignore_ascii_case(&k)) && kw.len() < MAX_KEYWORDS {
+                kw.push(k);
+            }
+        }
+        let language = language
+            .map(|l| l.trim().to_ascii_lowercase())
+            .and_then(|l| match l.as_str() {
+                "c++" => Some("cpp".to_owned()),
+                "c#" => Some("csharp".to_owned()),
+                "js" => Some("javascript".to_owned()),
+                "ts" => Some("typescript".to_owned()),
+                _ => SEARCH_LANGUAGES.iter().any(|(id, _)| *id == l).then_some(l),
+            });
+        if kw.is_empty() && language.is_none() {
+            return None;
+        }
+        Some(Self {
+            keywords: kw,
+            language,
+            beginner,
+        })
+    }
+
+    /// GitHub's `q`: keywords (a phrase is quoted), then the qualifiers.
+    pub fn github_q(&self) -> String {
+        let mut parts: Vec<String> = self
+            .keywords
+            .iter()
+            .map(|k| {
+                if k.contains(' ') {
+                    format!("\"{k}\"")
+                } else {
+                    k.clone()
+                }
+            })
+            .collect();
+        parts.extend(
+            ["is:issue", "is:open", "no:assignee", "archived:false"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        if let Some(name) = self
+            .language
+            .as_deref()
+            .and_then(|l| SEARCH_LANGUAGES.iter().find(|(id, _)| *id == l))
+            .map(|(_, name)| name)
+        {
+            parts.push(format!("language:\"{name}\""));
+        }
+        if self.beginner {
+            parts.push("label:\"good first issue\",\"help wanted\",\"beginner\",\"easy\"".into());
+        }
+        parts.join(" ")
+    }
+}
+
+/// An Issue found by a search, with what the search returned about it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FoundIssue {
+    pub issue: IssueRef,
+    pub remote: RemoteIssue,
+}
+
+/// The suitability check for a search result. The search does not return
+/// the repository's license, so that finding is left to the full check on
+/// import; everything else is judged as on import.
+pub fn screen(issue: &RemoteIssue, now: Timestamp) -> Suitability {
+    let mut s = assess(issue, now);
+    s.findings.retain(|f| f.code != "no_license");
+    let worst = s.findings.iter().map(|f| f.severity).max();
+    s.verdict = match worst {
+        Some(Severity::Blocker) => Verdict::Unsuitable,
+        Some(Severity::Caution) => Verdict::Caution,
+        _ => Verdict::Suitable,
+    };
+    s
+}
+
+/// Orders search results for a learner: suitable before cautioned, then
+/// newcomer labels, a checklist, a short discussion, recent activity.
+pub fn rank(found: &mut [(FoundIssue, Suitability)]) {
+    let key = |(f, s): &(FoundIssue, Suitability)| {
+        let has = |code: &str| s.findings.iter().any(|x| x.code == code);
+        (
+            match s.verdict {
+                Verdict::Suitable => 0,
+                Verdict::Caution => 1,
+                Verdict::Unsuitable => 2,
+            },
+            !has("beginner_label"),
+            !has("checklist"),
+            f.remote.comments.min(30),
+            std::cmp::Reverse(f.remote.updated_at),
+        )
+    };
+    found.sort_by_key(key);
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    #[test]
+    fn builds_github_queries_from_clean_parts() {
+        let q = IssueQuery::new(
+            &[
+                "error messages".into(),
+                "parser".into(),
+                "repo:evil/x label:spam".into(),
+                "OR".into(),
+                "PARSER".into(),
+            ],
+            Some("Rust"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            q.keywords,
+            ["error messages", "parser", "repoevilx labelspam"]
+        );
+        assert_eq!(
+            q.github_q(),
+            "\"error messages\" parser \"repoevilx labelspam\" is:issue is:open no:assignee archived:false language:\"Rust\" label:\"good first issue\",\"help wanted\",\"beginner\",\"easy\""
+        );
+        let q = IssueQuery::new(&[], Some("c++"), false).unwrap();
+        assert_eq!(q.language.as_deref(), Some("cpp"));
+        assert!(q.github_q().ends_with("language:\"C++\""));
+        assert!(IssueQuery::new(&["\"".into()], Some("cobol"), true).is_none());
+    }
+
+    #[test]
+    fn screens_and_ranks_search_results() {
+        let r = parse_issue_url("https://github.com/o/r/issues/1", &[]).unwrap();
+        let base = RemoteIssue {
+            title: "t".into(),
+            body:
+                "A clear description of the problem that is long enough to work on it.\n- [ ] do it"
+                    .into(),
+            open: true,
+            labels: vec![],
+            assignees: 0,
+            comments: 0,
+            pull_request: false,
+            locked: false,
+            created_at: None,
+            updated_at: Some(est_core::now()),
+            repository: RemoteRepository {
+                clone_url: "https://github.com/o/r.git".into(),
+                default_branch: None,
+                archived: false,
+                license: None,
+                language: None,
+            },
+        };
+        let s = screen(&base, est_core::now());
+        assert_eq!(s.verdict, Verdict::Suitable, "{s:?}");
+        let mut beginner = base.clone();
+        beginner.labels = vec!["good first issue".into()];
+        let mut chatty = base.clone();
+        chatty.comments = 40;
+        let mut found: Vec<_> = [chatty, base, beginner]
+            .into_iter()
+            .map(|remote| {
+                let s = screen(&remote, est_core::now());
+                (
+                    FoundIssue {
+                        issue: r.clone(),
+                        remote,
+                    },
+                    s,
+                )
+            })
+            .collect();
+        rank(&mut found);
+        assert_eq!(found[0].0.remote.labels, ["good first issue"]);
+        assert_eq!(found[2].0.remote.comments, 40);
+    }
+}
