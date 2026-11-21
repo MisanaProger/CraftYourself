@@ -121,17 +121,29 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   so‘nish bilan o‘rtachalanadi (30 kun / 10 Issue). Engineering Skill Matrix
   ko‘nikmalarni kuzatilgan dalillar bo‘yicha baholaydi — test urinishlari,
   trenajyor natijalari, yakunlangan amaliyot va Issue’lar (testlar, qabul
-  mezonlari, yordam darajalari) — holat, ishonchlilik, o‘lchovlar (nazariya,
-  amaliyot, diagnostika, mustaqillik) va tarix bilan. Darslarni o‘qish dalil
-  hisoblanmaydi, tekshirilmagan ko‘nikma 0 emas, «baholanmagan». Ular mustaqil:
-  ADI bahoga kirmaydi.
+  mezonlari, yordam darajalari, kommitlar sifati) — holat, ishonchlilik,
+  o‘lchovlar (nazariya, amaliyot, diagnostika, ko‘chirish, mustaqillik) va
+  tarix bilan. Issue vazifada nomlangan ko‘nikmalarga yoki vazifa teglari va
+  turidan chiqarilgan ko‘nikmalarga hisoblanadi; *ko‘chirish* — yangi
+  kontekstda qo‘llangan ko‘nikma (dars, keyin masala, keyin haqiqiy loyiha).
+  ADI diff’ingizning qancha qismi mentor ko‘rsatgan kod bilan mos kelishini
+  ham hisobga oladi; model Issue bahosini tushuntira oladi, lekin uni faqat kod
+  qo‘yadi. Darslarni o‘qish dalil hisoblanmaydi, tekshirilmagan ko‘nikma 0
+  emas, «baholanmagan». Ular mustaqil: ADI bahoga kirmaydi.
+- **Git bilan ishlash.** Kommitlaringiz umumiy qoidalar va loyihaning o‘z
+  tarixidan o‘rganilgan kelishuvlar (Conventional Commits, sarlavha uzunligi,
+  sign-off…) bo‘yicha tekshiriladi. Pull request qoralamasi kommitlaringiz,
+  qabul mezonlari va oxirgi test ishga tushirilishidan, tayyorlik chek-listi
+  bilan yig‘iladi; tarmoqni siz yuborasiz, EST esa qoralamani tasdiqlaganingizdan
+  keyin pull request ochadi. Issue muharriri xato haqida xabar yoki imkoniyat
+  so‘rovini nashrdan oldin tekshiradi.
 - **Desktop ilova (Tauri)** Linux, Windows va macOS uchun; xuddi shu interfeys brauzerda ham ishlaydi.
 - **Interfeys rus, ingliz va o‘zbek tillarida**; qorong‘i va yorug‘ mavzular.
 - **Maxfiylik.** Ma’lumotlar mahalliy; butun tarixni JSON’ga eksport qilish;
   suhbatni hodisalari va vazifa ADI’si bilan birga o‘chirish.
 
-Hozircha yo‘q: kommit va PR tekshiruvi hamda pull request’larni nashr qilish,
-model ishtirokidagi ADI, qolgan o‘quv dasturlari.
+Hozircha yo‘q: qolgan o‘quv dasturlari, imzolangan o‘rnatuvchilar, import
+qilingan Issue’larni asl repozitoriyda kuzatish.
 [ROADMAP.md](ROADMAP.md) ga qarang.
 
 ## Tez boshlash

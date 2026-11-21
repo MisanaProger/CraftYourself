@@ -118,17 +118,28 @@ Interface concepts: [`docs/design/`](docs/design)
   computed from observed events and averaged with double decay (30 days /
   10 Issues). The Engineering Skill Matrix scores skills from observed
   evidence — quiz attempts, trainer results, completed practice and Issues
-  (tests, acceptance criteria, help levels) — with a status, confidence,
-  dimensions (theory, practice, diagnosis, independence) and the evidence
-  history. Reading is not evidence, and untested skills are *not assessed*,
-  never zero. The two are independent: the ADI is not an input.
+  (tests, acceptance criteria, help levels, commit quality) — with a status,
+  confidence, dimensions (theory, practice, diagnosis, transfer, independence)
+  and the evidence history. Issues count for the skills the task names, or for
+  skills inferred from problem tags and the task type; *transfer* means a
+  skill applied in a new context (a lesson, then a problem, then a real
+  project). The ADI also observes how much of your diff matches code the
+  mentor showed; a model can explain an Issue's score, but only code sets it.
+  Reading is not evidence, and untested skills are *not assessed*, never
+  zero. The two are independent: the ADI is not an input.
+- **Git workflow.** Your commits are reviewed against general rules and the
+  conventions of the project's own history (Conventional Commits, subject
+  length, sign-off…). A pull request draft is built from your commits,
+  acceptance criteria and the last test run, with a readiness checklist; you
+  push the branch, EST opens the pull request after you confirm the draft.
+  An Issue writer checks a bug report or feature request before you publish it.
 - **Desktop app (Tauri)** for Linux, Windows and macOS; the same interface also runs in a browser.
 - **Interface in Russian, English and Uzbek**; dark and light themes.
 - **Privacy.** Data stays local; export your whole history as JSON; delete a
   conversation together with its events and the Issue's ADI.
 
-Not yet: commit and PR review and publishing pull requests, model-assisted
-ADI, the other learning programs. See the
+Not yet: the other learning programs, signed desktop installers, following
+imported Issues upstream. See the
 [roadmap](ROADMAP.md).
 
 ## Quick start

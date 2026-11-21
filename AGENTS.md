@@ -21,6 +21,7 @@ crates/
   est-problems       online-judge problems: links, statements, samples, workspace (pure)
   est-issues         GitHub/GitLab Issues: links, suitability check, task draft (pure)
   est-remote         forges and judges over HTTPS behind the RemoteSources port
+  est-review         commit review, PR drafts, Issue text checklist (pure)
   est-storage        SQLite repositories; migrations live in /migrations
   est-git            git CLI wrapper + GitPort
   est-sandbox        Docker/Podman runner + Sandbox port
