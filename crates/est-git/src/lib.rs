@@ -77,6 +77,22 @@ impl UrlPolicy {
     }
 }
 
+/// A commit with its message and changed files.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DetailedCommit {
+    pub hash: String,
+    pub message: String,
+    pub files: Vec<FileStat>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FileStat {
+    pub path: String,
+    /// `None` for binary files.
+    pub added: Option<u32>,
+    pub deleted: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct CommitInfo {
     pub hash: String,
@@ -377,6 +393,69 @@ impl Repo {
             .collect()
     }
 
+    /// Commits with their whole message and per-file line counts, newest
+    /// first. `since`: only commits after it (`since..HEAD`); otherwise the
+    /// history of `rev` (default `HEAD`).
+    pub fn log_detailed(
+        &self,
+        since: Option<&str>,
+        rev: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<DetailedCommit>> {
+        let n = format!("-n{}", limit.max(1));
+        let target = match (since, rev) {
+            (Some(base), _) => {
+                validate_ref(base)?;
+                format!("{base}..HEAD")
+            }
+            (None, Some(r)) => {
+                validate_ref(r)?;
+                r.to_owned()
+            }
+            (None, None) => "HEAD".to_owned(),
+        };
+        let out = self.stdout(
+            &[
+                "log",
+                &n,
+                "--numstat",
+                "--no-renames",
+                "--format=%x1e%H%x1f%B%x1f",
+                &target,
+                "--",
+            ],
+            "log",
+        )?;
+        out.split('\x1e')
+            .filter(|r| !r.trim().is_empty())
+            .map(|record| {
+                let mut parts = record.splitn(3, '\x1f');
+                let (Some(hash), Some(message), Some(stats)) =
+                    (parts.next(), parts.next(), parts.next())
+                else {
+                    return Err(GitError::Parse(record.chars().take(80).collect()));
+                };
+                let files = stats
+                    .lines()
+                    .filter_map(|l| {
+                        let mut f = l.splitn(3, '\t');
+                        let (a, d, path) = (f.next()?, f.next()?, f.next()?);
+                        Some(FileStat {
+                            path: path.to_owned(),
+                            added: a.parse().ok(),
+                            deleted: d.parse().ok(),
+                        })
+                    })
+                    .collect();
+                Ok(DetailedCommit {
+                    hash: hash.trim().to_owned(),
+                    message: message.trim_end().to_owned(),
+                    files,
+                })
+            })
+            .collect()
+    }
+
     /// Diff of the working tree (committed and uncommitted changes) against `rev`.
     pub fn diff_against(&self, rev: &str) -> Result<String> {
         validate_ref(rev)?;
@@ -487,6 +566,26 @@ mod tests {
         repo.add(&["lib.rs".into()]).unwrap();
         repo.commit("Initial commit", &me()).unwrap();
         (dir, repo)
+    }
+
+    #[test]
+    fn detailed_log() {
+        let (_d, repo) = repo_with_commit();
+        let base = repo.head_commit().unwrap();
+        std::fs::write(repo.root().join("lib.rs"), "a\nb\nc\n").unwrap();
+        std::fs::write(repo.root().join("img.bin"), [0u8, 1, 2, 0]).unwrap();
+        repo.add(&[".".into()]).unwrap();
+        repo.commit("Rewrite lib\n\nBecause.", &me()).unwrap();
+        let mine = repo.log_detailed(Some(&base), None, 10).unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].message, "Rewrite lib\n\nBecause.");
+        let lib = mine[0].files.iter().find(|f| f.path == "lib.rs").unwrap();
+        assert_eq!((lib.added, lib.deleted), (Some(3), Some(1)));
+        let bin = mine[0].files.iter().find(|f| f.path == "img.bin").unwrap();
+        assert_eq!(bin.added, None);
+        let history = repo.log_detailed(None, Some(&base), 10).unwrap();
+        assert_eq!(history[0].message, "Initial commit");
+        assert!(repo.log_detailed(Some("--all"), None, 1).is_err());
     }
 
     #[test]

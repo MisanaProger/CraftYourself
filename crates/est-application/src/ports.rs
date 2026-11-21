@@ -148,6 +148,15 @@ pub trait GitPort: Send + Sync {
     fn status(&self, repo: &Path) -> AppResult<Vec<FileStatus>>;
     fn diff(&self, repo: &Path, target: DiffTarget<'_>) -> AppResult<String>;
     fn log(&self, repo: &Path, since: Option<&str>, limit: usize) -> AppResult<Vec<CommitSummary>>;
+    /// Commits with messages and file stats, newest first: after `since`
+    /// (`since..HEAD`), or else the history of `rev` (default `HEAD`).
+    fn commits(
+        &self,
+        repo: &Path,
+        since: Option<&str>,
+        rev: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<est_review::commits::CommitData>>;
     fn tracked_files(&self, repo: &Path) -> AppResult<Vec<String>>;
     fn grep(&self, repo: &Path, needle: &str, max: usize) -> AppResult<Vec<SourceMatch>>;
     /// Initialises a repository with all files of `path` in one commit;
@@ -545,10 +554,35 @@ pub trait RemoteSources: Send + Sync {
     async fn issue(&self, issue: &est_issues::IssueRef) -> AppResult<est_issues::RemoteIssue>;
     /// A problem's statement, samples and metadata.
     async fn problem(&self, problem: &est_problems::ProblemRef) -> AppResult<FetchedProblem>;
-    /// Whether a token for publishing to `host` is configured.
-    fn can_publish(&self, issue: &est_issues::IssueRef) -> bool;
+    /// Whether a token for publishing to the repository's forge is configured.
+    fn can_publish(&self, repo: &est_issues::RepoRef) -> bool;
     /// Publishes a comment on the Issue; returns the comment's link.
     async fn comment(&self, issue: &est_issues::IssueRef, body: &str) -> AppResult<String>;
+    /// Opens a pull request from `head` (`branch` or `user:branch`, pushed
+    /// by the learner) into `base`; returns its link.
+    async fn create_pull_request(
+        &self,
+        _repo: &est_issues::RepoRef,
+        _title: &str,
+        _body: &str,
+        _head: &str,
+        _base: &str,
+    ) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "opening pull requests is not supported here".into(),
+        ))
+    }
+    /// Opens a new Issue; returns its link.
+    async fn create_issue(
+        &self,
+        _repo: &est_issues::RepoRef,
+        _title: &str,
+        _body: &str,
+    ) -> AppResult<String> {
+        Err(crate::AppError::Invalid(
+            "opening Issues is not supported here".into(),
+        ))
+    }
     /// Open Issues on GitHub matching the query, newest activity first.
     async fn search_issues(
         &self,
@@ -586,7 +620,7 @@ impl RemoteSources for NoRemote {
             "reading problems is not configured".into(),
         ))
     }
-    fn can_publish(&self, _: &est_issues::IssueRef) -> bool {
+    fn can_publish(&self, _: &est_issues::RepoRef) -> bool {
         false
     }
     async fn comment(&self, _: &est_issues::IssueRef, _: &str) -> AppResult<String> {

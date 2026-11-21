@@ -358,7 +358,7 @@ impl App {
                 }));
             }
         };
-        if !self.ports.remote.can_publish(&issue) {
+        if !self.ports.remote.can_publish(&issue.repo()) {
             return Err(AppError::Invalid(format!(
                 "no token for publishing to {} is configured (`[remote]` in config.toml)",
                 issue.host

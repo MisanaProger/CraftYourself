@@ -542,6 +542,7 @@ dependencies = [
  "est-issues",
  "est-learning",
  "est-problems",
+ "est-review",
  "serde",
  "serde_json",
  "thiserror",
@@ -634,6 +635,7 @@ name = "est-git"
 version = "0.1.0"
 dependencies = [
  "est-application",
+ "est-review",
  "serde",
  "tempfile",
  "thiserror",

@@ -63,7 +63,73 @@ pub struct IssueRef {
     pub url: String,
 }
 
+/// A repository on a forge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoRef {
+    pub forge: Forge,
+    pub host: String,
+    /// `owner/repo` (GitHub), `group/…/project` (GitLab).
+    pub project: String,
+}
+
+impl RepoRef {
+    pub fn url(&self) -> String {
+        format!("https://{}/{}", self.host, self.project)
+    }
+}
+
+/// Recognises a repository's https or scp-like SSH clone URL on GitHub or
+/// GitLab (`https://github.com/o/r.git`, `git@gitlab.com:g/p.git`).
+pub fn parse_repo_url(raw: &str, gitlab_hosts: &[String]) -> Option<RepoRef> {
+    let raw = raw.trim();
+    let (host, path) = if let Some(rest) = raw.strip_prefix("git@") {
+        rest.split_once(':')?
+    } else {
+        let url = url::Url::parse(raw).ok()?;
+        if !matches!(url.scheme(), "https" | "ssh") {
+            return None;
+        }
+        let host = url.host_str()?.to_owned();
+        return parse_repo_parts(&host, url.path(), gitlab_hosts);
+    };
+    parse_repo_parts(host, path, gitlab_hosts)
+}
+
+fn parse_repo_parts(host: &str, path: &str, gitlab_hosts: &[String]) -> Option<RepoRef> {
+    let host = host.to_ascii_lowercase();
+    let host = host.strip_prefix("www.").unwrap_or(&host).to_owned();
+    let segs: Vec<&str> = path
+        .trim_matches('/')
+        .trim_end_matches(".git")
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !segs.iter().all(|s| is_name(s)) {
+        return None;
+    }
+    let forge = if host == "github.com" {
+        (segs.len() == 2).then_some(Forge::Github)?
+    } else if host == "gitlab.com" || gitlab_hosts.iter().any(|h| h.eq_ignore_ascii_case(&host)) {
+        (segs.len() >= 2 && segs.len() <= 20).then_some(Forge::Gitlab)?
+    } else {
+        return None;
+    };
+    Some(RepoRef {
+        forge,
+        host,
+        project: segs.join("/"),
+    })
+}
+
 impl IssueRef {
+    pub fn repo(&self) -> RepoRef {
+        RepoRef {
+            forge: self.forge,
+            host: self.host.clone(),
+            project: self.project.clone(),
+        }
+    }
+
     /// Clone URL of the repository the Issue belongs to.
     pub fn clone_url(&self) -> String {
         format!("https://{}/{}.git", self.host, self.project)
@@ -539,6 +605,18 @@ mod tests {
         ] {
             assert!(parse_issue_url(bad, &[]).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn parses_repository_urls() {
+        let r = parse_repo_url("https://github.com/o/r.git", &[]).unwrap();
+        assert_eq!((r.forge, r.project.as_str()), (Forge::Github, "o/r"));
+        assert_eq!(r.url(), "https://github.com/o/r");
+        let r = parse_repo_url("git@gitlab.com:g/sub/p.git", &[]).unwrap();
+        assert_eq!((r.forge, r.project.as_str()), (Forge::Gitlab, "g/sub/p"));
+        assert!(parse_repo_url("https://github.com/o/r/extra", &[]).is_none());
+        assert!(parse_repo_url("/home/me/repo", &[]).is_none());
+        assert!(parse_repo_url("https://example.com/o/r", &[]).is_none());
     }
 
     #[test]

@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use est_application::ports::{FetchedProblem, RemoteSources};
 use est_application::{AppError, AppResult};
-use est_issues::{Forge, FoundIssue, IssueQuery, IssueRef, RemoteIssue, RemoteRepository};
+use est_issues::{Forge, FoundIssue, IssueQuery, IssueRef, RemoteIssue, RemoteRepository, RepoRef};
 use est_problems::search::{FoundProblem, ProblemQuery};
 use est_problems::{Platform, ProblemInput, ProblemRef};
 use serde::Deserialize;
@@ -415,7 +415,7 @@ impl RemoteSources for HttpRemote {
         }
     }
 
-    fn can_publish(&self, r: &IssueRef) -> bool {
+    fn can_publish(&self, r: &RepoRef) -> bool {
         match r.forge {
             Forge::Github => self.github_token().is_some(),
             Forge::Gitlab => self.gitlab_token().is_some(),
@@ -466,6 +466,73 @@ impl RemoteSources for HttpRemote {
                 })
             }
         }
+    }
+
+    async fn create_pull_request(
+        &self,
+        r: &RepoRef,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: &str,
+    ) -> AppResult<String> {
+        let v = match r.forge {
+            Forge::Github => {
+                self.github_post(
+                    &format!("/repos/{}/pulls", r.project),
+                    json!({ "title": title, "body": body, "head": head, "base": base }),
+                    "pull request",
+                )
+                .await?
+            }
+            Forge::Gitlab => {
+                if head.contains(':') {
+                    return Err(AppError::Invalid(
+                        "GitLab merge requests from a fork are not supported yet; push the branch to the project".into(),
+                    ));
+                }
+                self.gitlab_post(
+                    r,
+                    "merge_requests",
+                    json!({ "title": title, "description": body,
+                            "source_branch": head, "target_branch": base }),
+                    "merge request",
+                )
+                .await?
+            }
+        };
+        Ok(v["html_url"]
+            .as_str()
+            .or(v["web_url"].as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| r.url()))
+    }
+
+    async fn create_issue(&self, r: &RepoRef, title: &str, body: &str) -> AppResult<String> {
+        let v = match r.forge {
+            Forge::Github => {
+                self.github_post(
+                    &format!("/repos/{}/issues", r.project),
+                    json!({ "title": title, "body": body }),
+                    "issue",
+                )
+                .await?
+            }
+            Forge::Gitlab => {
+                self.gitlab_post(
+                    r,
+                    "issues",
+                    json!({ "title": title, "description": body }),
+                    "issue",
+                )
+                .await?
+            }
+        };
+        Ok(v["html_url"]
+            .as_str()
+            .or(v["web_url"].as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| r.url()))
     }
 
     async fn search_issues(&self, q: &IssueQuery, limit: usize) -> AppResult<Vec<FoundIssue>> {
@@ -531,6 +598,43 @@ fn github_search_item(item: &Value) -> Option<FoundIssue> {
 }
 
 impl HttpRemote {
+    async fn github_post(&self, path: &str, body: Value, what: &str) -> AppResult<Value> {
+        let t = self
+            .github_token()
+            .ok_or_else(|| AppError::Invalid("no token for publishing is configured".into()))?;
+        self.json(
+            self.client
+                .post(format!("{}{path}", self.config.endpoints.github_api))
+                .bearer_auth(t)
+                .header("accept", "application/vnd.github+json")
+                .header("x-github-api-version", "2022-11-28")
+                .json(&body),
+            what,
+        )
+        .await
+    }
+
+    async fn gitlab_post(
+        &self,
+        r: &RepoRef,
+        path: &str,
+        body: Value,
+        what: &str,
+    ) -> AppResult<Value> {
+        let t = self
+            .gitlab_token()
+            .ok_or_else(|| AppError::Invalid("no token for publishing is configured".into()))?;
+        let id = url::form_urlencoded::byte_serialize(r.project.as_bytes()).collect::<String>();
+        self.json(
+            self.client
+                .post(format!("{}/projects/{id}/{path}", self.gitlab_api(&r.host)))
+                .header("private-token", t)
+                .json(&body),
+            what,
+        )
+        .await
+    }
+
     async fn codeforces_search(&self, q: &ProblemQuery) -> AppResult<Vec<FoundProblem>> {
         let base = &self.config.endpoints.codeforces;
         let mut req = self.client.get(format!("{base}/api/problemset.problems"));
@@ -704,12 +808,12 @@ mod tests {
         );
 
         let missing = remote(&base, Some("EST_REMOTE_TEST_NO_SUCH_VAR"));
-        assert!(!missing.can_publish(&r));
+        assert!(!missing.can_publish(&r.repo()));
         assert!(missing.comment(&r, "On it").await.is_err());
         // SAFETY: only this test reads the variable.
         unsafe { std::env::set_var("EST_REMOTE_TEST_TOKEN", "test-token") };
         let with = remote(&base, Some("EST_REMOTE_TEST_TOKEN"));
-        assert!(with.can_publish(&r));
+        assert!(with.can_publish(&r.repo()));
         assert_eq!(
             with.comment(&r, "On it").await.unwrap(),
             "https://github.com/o/r/issues/5#issuecomment-1"
@@ -786,6 +890,50 @@ mod tests {
             .unwrap();
         assert_eq!((lc[0].id.as_str(), lc[0].popularity), ("two-sum", Some(55)));
         assert_eq!(lc[0].difficulty.as_deref(), Some("easy"));
+    }
+
+    #[tokio::test]
+    async fn opens_pull_requests_and_issues() {
+        let app = Router::new()
+            .route(
+                "/repos/o/r/pulls",
+                post(|headers: HeaderMap, Json(b): Json<Value>| async move {
+                    assert_eq!(headers["authorization"], "Bearer pr-token");
+                    assert_eq!(
+                        (b["head"].as_str(), b["base"].as_str()),
+                        (Some("me:fix"), Some("main"))
+                    );
+                    Json(json!({ "html_url": "https://github.com/o/r/pull/9" }))
+                }),
+            )
+            .route(
+                "/api/v4/projects/{id}/issues",
+                post(|Json(b): Json<Value>| async move {
+                    assert_eq!(b["description"], "Steps");
+                    Json(json!({ "web_url": "https://gitlab.com/g/p/-/issues/3" }))
+                }),
+            );
+        let base = serve(app).await;
+        // SAFETY: only this test reads the variable.
+        unsafe { std::env::set_var("EST_REMOTE_TEST_PR_TOKEN", "pr-token") };
+        let r = remote(&base, Some("EST_REMOTE_TEST_PR_TOKEN"));
+        let gh = est_issues::parse_repo_url("https://github.com/o/r.git", &[]).unwrap();
+        assert_eq!(
+            r.create_pull_request(&gh, "T", "B", "me:fix", "main")
+                .await
+                .unwrap(),
+            "https://github.com/o/r/pull/9"
+        );
+        let gl = est_issues::parse_repo_url("https://gitlab.com/g/p", &[]).unwrap();
+        assert_eq!(
+            r.create_issue(&gl, "T", "Steps").await.unwrap(),
+            "https://gitlab.com/g/p/-/issues/3"
+        );
+        assert!(
+            r.create_pull_request(&gl, "T", "B", "me:fix", "main")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

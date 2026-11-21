@@ -230,7 +230,7 @@ impl RemoteSources for FakeRemote {
         })
     }
 
-    fn can_publish(&self, _: &est_issues::IssueRef) -> bool {
+    fn can_publish(&self, _: &est_issues::RepoRef) -> bool {
         true
     }
 
