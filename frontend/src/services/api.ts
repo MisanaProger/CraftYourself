@@ -5,6 +5,8 @@ import type {
   ConversationView,
   Criterion,
   GenerateProgram,
+  DiscoverRequest,
+  Discovery,
   FetchedProblem,
   ImportIssue,
   ImportProblem,
@@ -128,6 +130,9 @@ export const api = {
   importProblem: (p: ImportProblem) => json<StartedSession>("POST", "/problems", p),
   /** Reads the statement from the judge; `allow_network` is the learner's permission. */
   fetchProblem: (url: string, allow_network: boolean) => json<FetchedProblem>("POST", "/problems/fetch", { url, allow_network }),
+  discovery: () => json<Discovery | null>("GET", "/discovery"),
+  /** The model plans searches; EST runs them on GitHub and the judges. */
+  discover: (req: DiscoverRequest) => json<Discovery>("POST", "/discovery", req),
   previewIssue: (url: string, allow_network: boolean) => json<IssuePreview>("POST", "/issues/preview", { url, allow_network }),
   importIssue: (req: ImportIssue) => json<Task>("POST", "/issues/import", req),
   /** Prepares a comment on the task's Issue; nothing is published. */

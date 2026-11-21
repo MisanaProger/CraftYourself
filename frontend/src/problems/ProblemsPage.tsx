@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { DiscoveryPanel } from "../discovery/DiscoveryPanel";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { ImportProblem, ProblemLanguage, ProblemSummary, Sample } from "../types/api";
@@ -13,7 +14,8 @@ function ImportForm() {
   const { t, lang } = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [url, setUrl] = useState("");
+  const [params] = useSearchParams();
+  const [url, setUrl] = useState(params.get("url") ?? "");
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [samples, setSamples] = useState<Sample[]>([{ input: "", output: "" }]);
@@ -222,16 +224,23 @@ function ProblemList() {
 
 export function ProblemsPage() {
   const { t } = useT();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   return (
     <div className="page">
       <PageTitle sub={t("problems.subtitle")}>{t("problems.title")}</PageTitle>
       <div className="problems-layout">
         <Card title={t("problems.import")}>
-          <ImportForm />
+          <ImportForm key={params.get("url") ?? ""} />
         </Card>
-        <Card title={t("problems.list")}>
-          <ProblemList />
-        </Card>
+        <div className="stack">
+          <Card title={t("problems.list")}>
+            <ProblemList />
+          </Card>
+          <Card title={t("discovery.title")}>
+            <DiscoveryPanel issues={false} onPickIssue={(u) => navigate(`/tasks?issue=${encodeURIComponent(u)}`)} />
+          </Card>
+        </div>
       </div>
     </div>
   );

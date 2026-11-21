@@ -34,10 +34,10 @@ function Suitability({ preview }: { preview: IssuePreview }) {
   );
 }
 
-export function ImportIssueForm() {
+export function ImportIssueForm({ initialUrl = "" }: { initialUrl?: string }) {
   const { t } = useT();
   const qc = useQueryClient();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [allow, setAllow] = useState(false);
   const host = hostOf(url);
   const preview = useMutation({ mutationFn: () => api.previewIssue(url.trim(), allow) });

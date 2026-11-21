@@ -667,3 +667,57 @@ export interface PublishPreview {
   warnings: PublishWarning[];
   expires_at: string;
 }
+
+// ---- discovery --------------------------------------------------------------
+
+export interface IssueCandidate {
+  issue: IssueRef;
+  title: string;
+  labels: string[];
+  comments: number;
+  updated_at: string | null;
+  suitability: IssuePreview["suitability"];
+  task_type: TaskType;
+  difficulty: Difficulty;
+  reason: string;
+}
+
+export interface ProblemCandidate {
+  platform: "codeforces" | "leetcode" | "other";
+  id: string;
+  url: string;
+  title: string;
+  tags: string[];
+  rating: number | null;
+  difficulty: "easy" | "medium" | "hard" | null;
+  popularity: number | null;
+  reason: string;
+}
+
+export interface SearchReport {
+  source: "github" | "codeforces" | "leetcode";
+  query: unknown;
+  reason: string;
+  found: number;
+  error: string | null;
+}
+
+export interface Discovery {
+  id: string;
+  created_at: string;
+  model: string;
+  lang: string;
+  goal: string | null;
+  summary: string;
+  issues: IssueCandidate[];
+  problems: ProblemCandidate[];
+  searches: SearchReport[];
+}
+
+export interface DiscoverRequest {
+  goal?: string;
+  issues: boolean;
+  problems: boolean;
+  allow_network: boolean;
+  lang: string;
+}

@@ -530,6 +530,23 @@ export const en = {
   "publish.discard": "Discard",
   "publish.done": "Published.",
   "publish.warning.mentor_assisted": "The mentor showed code (L3+) in this Issue — the project's contribution rules may ask you to say so.",
+
+  "discovery.title": "Find an Issue or a problem",
+  "discovery.goal": "What do you want to get better at? (optional)",
+  "discovery.goalPlaceholder": "E.g. understand how parsers work and write better error messages in Rust",
+  "discovery.goalHint": "Leave it empty and the model chooses from your activity: weak topics, low skills, the next step after what went well. It only plans searches — EST runs them, checks every result and never takes a link from the model.",
+  "discovery.wantIssues": "Open-source Issues (GitHub)",
+  "discovery.wantProblems": "Problems (Codeforces, LeetCode)",
+  "discovery.allow": "Allow EST to search {hosts} now (search words, tags and ratings leave this device)",
+  "discovery.search": "Find for my goal",
+  "discovery.searchAuto": "Let the model choose",
+  "discovery.searching": "Planning and searching…",
+  "discovery.issues": "Issues",
+  "discovery.problems": "Problems",
+  "discovery.checkIssue": "Check and import",
+  "discovery.solve": "Analyse",
+  "discovery.nothing": "The searches found nothing suitable. Try another goal or fewer details.",
+  "discovery.failed": "Some searches failed",
 };
 
 export type Key = keyof typeof en;
