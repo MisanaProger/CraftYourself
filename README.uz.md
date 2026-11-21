@@ -82,6 +82,14 @@ Interfeys konseptlari: [`docs/design/`](docs/design)
   belgilanadi; *good first issue* va chek-listlar uning foydasiga). Import
   repozitoriyni ulaydi va vazifa yaratadi — tur va murakkablik belgilardan,
   chek-list qabul mezonlari sifatida — u boshqalari kabi L0 dan boshlanadi.
+- **Issue va masalalarni tanlash.** Nimani o‘rganmoqchi va yaxshilamoqchi
+  ekaningizni yozing («parserlar qanday ishlashini tushunish va tushunarli
+  xato xabarlarini yozish») yoki bo‘sh qoldiring — model faolligingiz
+  bo‘yicha o‘zi tanlaydi. U faqat qidiruvni rejalashtiradi — so‘zlar, til,
+  teglar, reyting — EST esa GitHub, Codeforces va LeetCode’da o‘zi qidiradi,
+  har bir natijani import qoidalari bilan tekshiradi, olinganlarini chiqarib
+  tashlaydi va modeldan hech qachon havola olmaydi. Topilgani odatdagi
+  importda ochiladi.
 - **Ruxsatingizsiz hech narsa chiqmaydi.** Platforma yoki masalalar saytidan
   o‘qish shu so‘rov uchun belgi talab qiladi; nashr (Issue’ingizga izoh) har
   doim avval qoralama bo‘lib, nima va qayerga ketishini ko‘rsatadi va faqat shu

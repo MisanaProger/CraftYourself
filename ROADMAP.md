@@ -44,6 +44,8 @@ Craft Yourself follows the stages of spec v0.3 (`docs/architecture.md`).
   generated programs.
 - Commit review that learns the repository's own conventions; PR preparation
   and publishing through the publish gate.
+- Discovery: GitLab search, remembering suggestions the learner skipped,
+  ranking candidates with the Skill Matrix after the search.
 - Imported Issues: follow the Issue upstream (closed, new comments, someone
   assigned), GitHub Enterprise, a fork-and-branch helper.
 - Localized exercise manifests (title, description, criteria in ru/en/uz).

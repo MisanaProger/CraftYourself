@@ -82,6 +82,13 @@ Interface concepts: [`docs/design/`](docs/design)
   issue* and checklists count in its favour). The import connects the
   repository and creates a task — type and difficulty from the labels, the
   checklist as acceptance criteria — that starts at L0 like any other.
+- **Finding Issues and problems.** Say what you want to get better at
+  ("understand parsers and write better error messages") or leave it empty
+  and let the model choose from your activity. The model only plans the
+  searches — keywords, language, tags, rating — and EST runs them on GitHub,
+  Codeforces and LeetCode, checks every result with the same rules as the
+  import, leaves out what you already have and never takes a link from the
+  model. A suggestion opens in the usual import.
 - **Nothing leaves without your permission.** Reading from a forge or judge
   needs a tick for that request; publishing (a comment on your Issue) is
   always a draft first, showing exactly what goes where, and is sent only
