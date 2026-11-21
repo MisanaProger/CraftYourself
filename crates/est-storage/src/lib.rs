@@ -8,13 +8,13 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use est_application::ports::{
-    AdiAssessment, AdiRepository, ConversationRepository, DataExporter, EngagementRepository,
-    EventLog, GeneratedProgramRecord, GeneratedProgramRepository, LearningProgressRepository,
-    LessonProgress, LessonResult, LessonResultRepository, ProjectRepository,
-    RecommendationRepository, RecommendationSet, SandboxRunRepository, SessionRepository,
-    SessionSummaryRepository, StoredEvent, TaskRepository, User, UserRepository,
+    AdiAssessment, AdiRepository, ConversationRepository, DataExporter, DiscoveryRepository,
+    EngagementRepository, EventLog, GeneratedProgramRecord, GeneratedProgramRepository,
+    LearningProgressRepository, LessonProgress, LessonResult, LessonResultRepository,
+    ProjectRepository, RecommendationRepository, RecommendationSet, SandboxRunRepository,
+    SessionRepository, SessionSummaryRepository, StoredEvent, TaskRepository, User, UserRepository,
 };
-use est_application::{AppError, AppResult};
+use est_application::{AppError, AppResult, Discovery};
 use est_core::{
     ConversationId, DomainEvent, EscalationId, MessageId, ProjectId, SessionId, TaskId, Timestamp,
     UserId,
@@ -1264,6 +1264,40 @@ impl RecommendationRepository for SqliteStore {
     }
 }
 
+// ---- discoveries ------------------------------------------------------------
+
+#[async_trait]
+impl DiscoveryRepository for SqliteStore {
+    async fn save_discovery(&self, user: &UserId, d: &Discovery) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO discoveries (id, user_id, created_at, model, data) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&d.id)
+        .bind(user.as_str())
+        .bind(d.created_at)
+        .bind(&d.model)
+        .bind(to_json(d))
+        .execute(&self.pool)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
+
+    async fn discoveries(&self, user: &UserId, limit: usize) -> AppResult<Vec<Discovery>> {
+        sqlx::query(
+            "SELECT data FROM discoveries WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+        )
+        .bind(user.as_str())
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db)?
+        .iter()
+        .map(|r| from_json("discovery", r.get("data")))
+        .collect()
+    }
+}
+
 // ---- session summaries ------------------------------------------------------
 
 #[async_trait]
@@ -1390,6 +1424,7 @@ impl DataExporter for SqliteStore {
             // What was asked for and what came out; generated quiz keys stay
             // on the server like bundled ones.
             "recommendations": self.recommendations(&user.id, 1000).await?,
+            "discoveries": self.discoveries(&user.id, 1000).await?,
             "generated_programs": self.list_generated(&user.id).await?.iter().map(|g| serde_json::json!({
                 "id": g.id, "topic": g.topic, "lang": g.lang, "level": g.level,
                 "status": g.status, "model": g.model, "created_at": g.created_at,

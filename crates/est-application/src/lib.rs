@@ -7,6 +7,7 @@
 
 mod analytics;
 mod conversation;
+pub mod discovery;
 mod error;
 pub mod generation;
 pub mod knowledge;
@@ -22,6 +23,7 @@ mod streaming;
 
 pub use analytics::{AdiHistoryItem, AdiOverview, PrivacySettings, SkillMatrix};
 pub use conversation::{ConversationView, NewConversation, PostMessage};
+pub use discovery::{DiscoverRequest, Discovery};
 pub use error::{AppError, AppResult};
 pub use generation::{GenerateProgram, GeneratedProgramSummary};
 pub use knowledge::KnowledgeProfileView;

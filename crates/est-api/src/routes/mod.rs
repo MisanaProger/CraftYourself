@@ -9,6 +9,7 @@ use crate::runtime::Runtime;
 
 mod analytics;
 mod conversations;
+mod discovery;
 mod isolated;
 mod knowledge;
 mod learning;
@@ -128,6 +129,10 @@ pub fn api() -> Router<Runtime> {
         )
         .route("/problems", get(problems::list).post(problems::import))
         .route("/problems/fetch", post(remote::fetch_problem))
+        .route(
+            "/discovery",
+            get(discovery::latest).post(discovery::discover),
+        )
         .route("/issues/preview", post(remote::preview_issue))
         .route("/issues/import", post(remote::import_issue))
         .route("/tasks/{id}/issue/comments", post(remote::draft_comment))

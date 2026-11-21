@@ -82,6 +82,19 @@ fn generated_content(system: &str, request: &str, attempt: usize) -> Option<Stri
             { "text": "DFS uses a", "options": ["stack", "queue"], "answer": 0, "explanation": "LIFO" }
         ]})
         .to_string()
+    } else if system.starts_with("You help a learner of Craft Yourself") {
+        // Echo whether a goal was given, so the test sees what was sent.
+        let goal = request.contains("parsers");
+        json!({ "summary": if goal { "Parsers, as asked" } else { "From your activity" },
+            "issues": [
+                { "keywords": ["parser", "error message"], "language": "rust", "reason": "error handling" },
+                { "keywords": ["\""], "language": "cobol", "reason": "dropped" }
+            ],
+            "problems": [
+                { "platform": "codeforces", "tags": ["dp", "magic"], "rating": 1200, "reason": "dp practice" },
+                { "platform": "leetcode", "tags": ["hash-table"], "difficulty": "easy", "reason": "warm-up" }
+            ]})
+        .to_string()
     } else if system.starts_with("Write one self-contained interactive HTML5 page") {
         "```html\n<!DOCTYPE html><html><body><svg></svg></body></html>\n```".to_owned()
     } else {
@@ -219,6 +232,85 @@ impl RemoteSources for FakeRemote {
 
     fn can_publish(&self, _: &est_issues::IssueRef) -> bool {
         true
+    }
+
+    async fn search_issues(
+        &self,
+        q: &est_issues::IssueQuery,
+        _limit: usize,
+    ) -> AppResult<Vec<est_issues::FoundIssue>> {
+        self.fetched
+            .lock()
+            .unwrap()
+            .push(format!("search:{}", q.github_q()));
+        let mut found = Vec::new();
+        for (n, open) in [(5, true), (7, true), (8, false)] {
+            let issue = est_issues::parse_issue_url(
+                &format!("https://github.com/acme/ranges/issues/{n}"),
+                &[],
+            )
+            .unwrap();
+            let mut remote = self.issue(&issue).await.unwrap_or_else(|_| {
+                // 7 and 8 exist only in search results.
+                est_issues::RemoteIssue {
+                    title: format!("Issue {n}"),
+                    body: "A description long enough to understand what has to change here.".into(),
+                    open,
+                    labels: vec!["help wanted".into()],
+                    assignees: 0,
+                    comments: 3,
+                    pull_request: false,
+                    locked: false,
+                    created_at: None,
+                    updated_at: Some(est_core::now()),
+                    repository: est_issues::RemoteRepository {
+                        clone_url: issue.clone_url(),
+                        default_branch: None,
+                        archived: false,
+                        license: None,
+                        language: None,
+                    },
+                }
+            });
+            remote.repository.license = None;
+            found.push(est_issues::FoundIssue { issue, remote });
+        }
+        Ok(found)
+    }
+
+    async fn search_problems(
+        &self,
+        q: &est_problems::search::ProblemQuery,
+    ) -> AppResult<Vec<est_problems::search::FoundProblem>> {
+        use est_problems::Platform;
+        self.fetched
+            .lock()
+            .unwrap()
+            .push(format!("search:{}", q.platform.as_str()));
+        let p = |id: &str, rating: Option<u32>, difficulty: Option<&str>, popularity| {
+            est_problems::search::FoundProblem {
+                platform: q.platform,
+                id: id.into(),
+                url: format!("https://example.invalid/{id}"),
+                title: id.into(),
+                tags: q.tags.clone(),
+                rating,
+                difficulty: difficulty.map(str::to_owned),
+                popularity: Some(popularity),
+                paid_only: false,
+            }
+        };
+        Ok(match q.platform {
+            Platform::Codeforces => vec![
+                p("4A", Some(1200), None, 900),
+                p("10B", Some(1300), None, 500),
+                p("11C", Some(2400), None, 9000),
+            ],
+            _ => vec![
+                p("two-sum", None, Some("easy"), 55),
+                p("lru-cache", None, Some("medium"), 40),
+            ],
+        })
     }
 
     async fn comment(&self, r: &est_issues::IssueRef, body: &str) -> AppResult<String> {
@@ -2065,4 +2157,102 @@ async fn loads_problem_statements_with_permission() {
     let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
     let statement = std::fs::read_to_string(ws.join("PROBLEM.md")).unwrap();
     assert!(statement.contains("weight $w$"), "{statement}");
+}
+
+#[tokio::test]
+async fn discovery_plans_searches_and_code_runs_them() {
+    let h = harness().await;
+    // Nothing goes to the model or the network without permission.
+    let (s, e) = h
+        .post("/api/v1/discovery", json!({ "goal": "parsers" }))
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{e}");
+    assert_eq!(h.llm_calls(), 0);
+    assert!(h.remote.fetched.lock().unwrap().is_empty());
+    let (s, latest) = h.get("/api/v1/discovery").await;
+    assert_eq!((s, latest), (StatusCode::OK, Value::Null));
+
+    // A problem imported earlier is not offered again.
+    let mut input = watermelon("python");
+    input["url"] = json!("https://codeforces.com/problemset/problem/4/A");
+    assert_eq!(
+        h.post("/api/v1/problems", input).await.0,
+        StatusCode::CREATED
+    );
+
+    let (s, d) = h
+        .post(
+            "/api/v1/discovery",
+            json!({ "goal": "I want to understand parsers and write better error messages",
+                    "allow_network": true, "lang": "en" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{d}");
+    assert_eq!(d["summary"], "Parsers, as asked");
+    let request = h.llm.requests.lock().unwrap().last().unwrap().messages[0]
+        .content
+        .clone();
+    assert!(request.contains("Learner's goal: \"I want to understand parsers"));
+    assert!(request.contains("Activity snapshot"));
+
+    // The invalid search was dropped; queries were built in code.
+    let fetched = h.remote.fetched.lock().unwrap().clone();
+    assert!(fetched.contains(&"search:parser \"error message\" is:issue is:open no:assignee archived:false language:\"Rust\" label:\"good first issue\",\"help wanted\",\"beginner\",\"easy\"".to_owned()), "{fetched:?}");
+    assert_eq!(
+        fetched.iter().filter(|f| f.starts_with("search:")).count(),
+        3
+    );
+    assert_eq!(d["searches"].as_array().unwrap().len(), 3);
+
+    // Issues: closed one screened out, the good first issue first.
+    let issues = d["issues"].as_array().unwrap();
+    let urls: Vec<_> = issues
+        .iter()
+        .map(|i| i["issue"]["url"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        urls,
+        [
+            "https://github.com/acme/ranges/issues/5",
+            "https://github.com/acme/ranges/issues/7"
+        ]
+    );
+    assert_eq!(issues[0]["reason"], "error handling");
+    assert_eq!(issues[0]["task_type"], "bug-fix");
+
+    // Problems: inside the rating window, not imported, then LeetCode.
+    let ids: Vec<_> = d["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["10B", "two-sum"]);
+    assert_eq!(d["problems"][0]["reason"], "dp practice");
+
+    // Importing a suggestion is the usual import.
+    let (s, task) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issues[0]["issue"]["url"], "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+
+    // Without a goal the model chooses; an imported Issue is not offered.
+    let (s, d) = h
+        .post(
+            "/api/v1/discovery",
+            json!({ "allow_network": true, "problems": false }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{d}");
+    assert_eq!(d["summary"], "From your activity");
+    assert_eq!(d["goal"], Value::Null);
+    assert_eq!(d["problems"], json!([]));
+    assert_eq!(d["issues"].as_array().unwrap().len(), 1);
+    let (_, latest) = h.get("/api/v1/discovery").await;
+    assert_eq!(latest["id"], d["id"]);
+    let (_, export) = h.post("/api/v1/data/export", json!({})).await;
+    assert_eq!(export["discoveries"].as_array().unwrap().len(), 2);
 }

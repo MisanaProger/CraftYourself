@@ -45,6 +45,7 @@ pub struct Ports {
     pub lesson_results: Arc<dyn LessonResultRepository>,
     /// Code forges and online judges.
     pub remote: Arc<dyn RemoteSources>,
+    pub discoveries: Arc<dyn DiscoveryRepository>,
 }
 
 #[derive(Debug, Clone, Default)]

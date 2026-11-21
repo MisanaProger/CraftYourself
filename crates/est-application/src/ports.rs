@@ -480,6 +480,21 @@ pub trait RecommendationRepository: Send + Sync {
     ) -> AppResult<Vec<RecommendationSet>>;
 }
 
+/// Discoveries (searches planned by a model), newest first.
+#[async_trait]
+pub trait DiscoveryRepository: Send + Sync {
+    async fn save_discovery(
+        &self,
+        user: &UserId,
+        discovery: &crate::discovery::Discovery,
+    ) -> AppResult<()>;
+    async fn discoveries(
+        &self,
+        user: &UserId,
+        limit: usize,
+    ) -> AppResult<Vec<crate::discovery::Discovery>>;
+}
+
 /// Session Summaries, written in code when a session ends.
 #[async_trait]
 pub trait SessionSummaryRepository: Send + Sync {

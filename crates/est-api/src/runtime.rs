@@ -88,6 +88,7 @@ impl Runtime {
             generated: store.clone(),
             recommendations: store.clone(),
             summaries: store.clone(),
+            discoveries: store.clone(),
             lesson_results: store,
             sandbox,
             remote,
