@@ -46,10 +46,29 @@ pub(crate) struct PendingDrafts(Arc<Mutex<HashMap<String, Pending>>>);
 
 #[derive(Clone)]
 struct Pending {
-    task_id: TaskId,
-    issue: IssueRef,
+    task_id: Option<TaskId>,
+    project_id: Option<ProjectId>,
+    action: PendingAction,
     draft: PublishDraft,
     created_at: Timestamp,
+}
+
+/// What a confirmed draft does.
+#[derive(Clone)]
+pub(crate) enum PendingAction {
+    Comment(IssueRef),
+    PullRequest {
+        repo: est_issues::RepoRef,
+        title: String,
+        body: String,
+        head: String,
+        base: String,
+    },
+    Issue {
+        repo: est_issues::RepoRef,
+        title: String,
+        body: String,
+    },
 }
 
 impl PendingDrafts {
@@ -132,7 +151,7 @@ pub struct Published {
     pub url: String,
 }
 
-fn gate(decision: GateDecision) -> AppResult<()> {
+pub(crate) fn gate(decision: GateDecision) -> AppResult<()> {
     match decision {
         GateDecision::Allow => Ok(()),
         GateDecision::NeedsPermission { reason } => Err(AppError::PermissionRequired(reason)),
@@ -144,7 +163,7 @@ fn gate(decision: GateDecision) -> AppResult<()> {
 }
 
 impl App {
-    fn gitlab_hosts(&self) -> &[String] {
+    pub(crate) fn gitlab_hosts(&self) -> &[String] {
         &self.settings.gitlab_hosts
     }
 
@@ -305,7 +324,7 @@ impl App {
     }
 
     /// Highest level the mentor worked at in the task's conversation.
-    async fn highest_level(&self, task: &TaskId) -> AppResult<Option<EngagementLevel>> {
+    pub(crate) async fn highest_level(&self, task: &TaskId) -> AppResult<Option<EngagementLevel>> {
         let Some(conv) = self.ports.conversations.for_task(task).await? else {
             return Ok(None);
         };
@@ -341,8 +360,32 @@ impl App {
             target: issue.url.clone(),
             body: req.body.trim().to_owned(),
         };
+        let repo = issue.repo();
+        self.prepare_publish(
+            Some(task.id.clone()),
+            None,
+            repo,
+            PendingAction::Comment(issue),
+            draft,
+        )
+        .await
+    }
+
+    /// Checks a draft with the gate, keeps it for confirmation and shows
+    /// it. Nothing is sent.
+    pub(crate) async fn prepare_publish(
+        &self,
+        task_id: Option<TaskId>,
+        project_id: Option<ProjectId>,
+        repo: est_issues::RepoRef,
+        action: PendingAction,
+        draft: PublishDraft,
+    ) -> AppResult<PublishPreview> {
         let context = PublishContext {
-            highest_level: self.highest_level(task_id).await?,
+            highest_level: match &task_id {
+                Some(t) => self.highest_level(t).await?,
+                None => None,
+            },
         };
         let (digest, warnings) = match gates::check_publish(
             Initiator::Learner,
@@ -358,10 +401,10 @@ impl App {
                 }));
             }
         };
-        if !self.ports.remote.can_publish(&issue.repo()) {
+        if !self.ports.remote.can_publish(&repo) {
             return Err(AppError::Invalid(format!(
                 "no token for publishing to {} is configured (`[remote]` in config.toml)",
-                issue.host
+                repo.host
             )));
         }
         let id = uuid::Uuid::new_v4().simple().to_string();
@@ -369,24 +412,28 @@ impl App {
         self.drafts.lock().insert(
             id.clone(),
             Pending {
-                task_id: task.id.clone(),
-                issue,
+                task_id: task_id.clone(),
+                project_id: project_id.clone(),
+                action,
                 draft: draft.clone(),
                 created_at,
             },
         );
-        self.emit(
-            DomainEvent::new(
-                events::PUBLISH_DRAFTED,
-                json!({
-                    "draft_id": id, "kind": draft.kind, "host": draft.host,
-                    "target": draft.target, "digest": digest,
-                    "chars": draft.body.chars().count(), "warnings": warnings,
-                }),
-            )
-            .task(&task.id),
-        )
-        .await?;
+        let mut event = DomainEvent::new(
+            events::PUBLISH_DRAFTED,
+            json!({
+                "draft_id": id, "kind": draft.kind, "host": draft.host,
+                "target": draft.target, "digest": digest,
+                "chars": draft.body.chars().count(), "warnings": warnings,
+            }),
+        );
+        if let Some(t) = &task_id {
+            event = event.task(t);
+        }
+        if let Some(p) = &project_id {
+            event = event.project(p);
+        }
+        self.emit(event).await?;
         Ok(PublishPreview {
             id,
             kind: draft.kind,
@@ -407,7 +454,10 @@ impl App {
             .remove(id)
             .ok_or_else(|| AppError::NotFound("draft".into()))?;
         let context = PublishContext {
-            highest_level: self.highest_level(&pending.task_id).await?,
+            highest_level: match &pending.task_id {
+                Some(t) => self.highest_level(t).await?,
+                None => None,
+            },
         };
         gate(gates::check_publish(
             Initiator::Learner,
@@ -420,22 +470,38 @@ impl App {
             }),
             self.gitlab_hosts(),
         ))?;
-        let url = self
-            .ports
-            .remote
-            .comment(&pending.issue, &pending.draft.body)
-            .await?;
-        self.emit(
-            DomainEvent::new(
-                events::PUBLISH_COMPLETED,
-                json!({
-                    "draft_id": id, "kind": pending.draft.kind, "host": pending.draft.host,
-                    "target": pending.draft.target, "url": url,
-                }),
-            )
-            .task(&pending.task_id),
-        )
-        .await?;
+        let remote = &self.ports.remote;
+        let url = match &pending.action {
+            PendingAction::Comment(issue) => remote.comment(issue, &pending.draft.body).await?,
+            PendingAction::PullRequest {
+                repo,
+                title,
+                body,
+                head,
+                base,
+            } => {
+                remote
+                    .create_pull_request(repo, title, body, head, base)
+                    .await?
+            }
+            PendingAction::Issue { repo, title, body } => {
+                remote.create_issue(repo, title, body).await?
+            }
+        };
+        let mut event = DomainEvent::new(
+            events::PUBLISH_COMPLETED,
+            json!({
+                "draft_id": id, "kind": pending.draft.kind, "host": pending.draft.host,
+                "target": pending.draft.target, "url": url,
+            }),
+        );
+        if let Some(t) = &pending.task_id {
+            event = event.task(t);
+        }
+        if let Some(p) = &pending.project_id {
+            event = event.project(p);
+        }
+        self.emit(event).await?;
         Ok(Published { url })
     }
 
@@ -446,11 +512,11 @@ impl App {
             .lock()
             .remove(id)
             .ok_or_else(|| AppError::NotFound("draft".into()))?;
-        self.emit(
-            DomainEvent::new(events::PUBLISH_DISCARDED, json!({ "draft_id": id }))
-                .task(&pending.task_id),
-        )
-        .await
+        let mut event = DomainEvent::new(events::PUBLISH_DISCARDED, json!({ "draft_id": id }));
+        if let Some(t) = &pending.task_id {
+            event = event.task(t);
+        }
+        self.emit(event).await
     }
 }
 

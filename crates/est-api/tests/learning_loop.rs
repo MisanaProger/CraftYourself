@@ -234,6 +234,34 @@ impl RemoteSources for FakeRemote {
         true
     }
 
+    async fn create_pull_request(
+        &self,
+        repo: &est_issues::RepoRef,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: &str,
+    ) -> AppResult<String> {
+        self.comments.lock().unwrap().push((
+            format!("pr:{}:{head}->{base}", repo.project),
+            format!("{title}\n\n{body}"),
+        ));
+        Ok(format!("{}/pull/1", repo.url()))
+    }
+
+    async fn create_issue(
+        &self,
+        repo: &est_issues::RepoRef,
+        title: &str,
+        body: &str,
+    ) -> AppResult<String> {
+        self.comments.lock().unwrap().push((
+            format!("issue:{}", repo.project),
+            format!("{title}\n\n{body}"),
+        ));
+        Ok(format!("{}/issues/99", repo.url()))
+    }
+
     async fn search_issues(
         &self,
         q: &est_issues::IssueQuery,
@@ -2255,4 +2283,192 @@ async fn discovery_plans_searches_and_code_runs_them() {
     assert_eq!(latest["id"], d["id"]);
     let (_, export) = h.post("/api/v1/data/export", json!({})).await;
     assert_eq!(export["discoveries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn git_workflow_reviews_commits_and_publishes_confirmed_pull_requests() {
+    let h = harness().await;
+    // The origin is a clone of a GitHub repository.
+    let status = std::process::Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/ranges.git",
+        ])
+        .current_dir(&h.origin)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let issue = "https://github.com/acme/ranges/issues/5";
+    let (s, task) = h
+        .post(
+            "/api/v1/issues/import",
+            json!({ "url": issue, "allow_network": true }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{task}");
+    let tid = task["id"].as_str().unwrap().to_owned();
+    let pid = task["project_id"].as_str().unwrap().to_owned();
+    let (_, started) = h
+        .post(&format!("/api/v1/tasks/{tid}/start"), json!({}))
+        .await;
+    let sid = started["id"].as_str().unwrap().to_owned();
+    let ws = PathBuf::from(started["workspace_path"].as_str().unwrap());
+
+    // Two commits of the learner: a good one and a sloppy one.
+    let repo = Repo::open(&ws);
+    std::fs::write(
+        ws.join("src/lib.rs"),
+        "pub fn parse_range(s: &str) -> Result<Vec<u32>, String> {\n    todo!()\n}\n",
+    )
+    .unwrap();
+    repo.add(&["src/lib.rs".into()]).unwrap();
+    repo.commit(
+        "Return an error for an open range\n\n`5..` used to panic.",
+        &learner(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(ws.join("target")).unwrap();
+    std::fs::write(ws.join("target/out.log"), "x").unwrap();
+    repo.add(&["target/out.log".into()]).unwrap();
+    repo.commit("fixed stuff", &learner()).unwrap();
+
+    let (s, review) = h
+        .get(&format!("/api/v1/sessions/{sid}/commits/review"))
+        .await;
+    assert_eq!(s, StatusCode::OK, "{review}");
+    let commits = review["commits"].as_array().unwrap();
+    assert_eq!(commits.len(), 2);
+    assert_eq!(commits[0]["subject"], "Return an error for an open range");
+    assert_eq!(commits[0]["score"], 100);
+    let codes: Vec<_> = commits[1]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["code"].as_str().unwrap())
+        .collect();
+    assert!(
+        codes.contains(&"not_imperative") && codes.contains(&"generated_file"),
+        "{codes:?}"
+    );
+    assert_eq!(review["conventions"]["learned_from"], 1);
+
+    let (_, run) = h
+        .post(
+            &format!("/api/v1/sessions/{sid}/sandbox/runs"),
+            json!({ "kind": "test" }),
+        )
+        .await;
+    h.wait_run(run["id"].as_str().unwrap()).await;
+
+    let (s, pr) = h.get(&format!("/api/v1/sessions/{sid}/pull-request")).await;
+    assert_eq!(s, StatusCode::OK, "{pr}");
+    assert_eq!(pr["repository"]["project"], "acme/ranges");
+    assert_eq!(pr["can_publish"], true);
+    let body = pr["body"].as_str().unwrap();
+    assert!(body.starts_with("Closes #5."), "{body}");
+    assert!(body.contains("- Return an error for an open range\n- fixed stuff"));
+    assert!(body.contains("`cargo test` — passed (3 passed, 0 failed)"));
+    let failed: Vec<_> = pr["readiness"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["ok"] == false)
+        .map(|r| r["code"].as_str().unwrap())
+        .collect();
+    assert!(failed.contains(&"criteria_done"), "{failed:?}");
+    assert_eq!(pr["ready"], false);
+
+    // Publishing: validated branch names, then a confirmed draft.
+    let draft_url = format!("/api/v1/sessions/{sid}/pull-request/draft");
+    let (s, _) = h
+        .post(
+            &draft_url,
+            json!({ "title": "Fix", "body": "b", "head": "me:x y", "base": "main" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, draft) = h
+        .post(
+            &draft_url,
+            json!({ "title": pr["title"], "body": body, "head": "learner:est/fix", "base": "main" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{draft}");
+    assert_eq!(draft["kind"], "pull_request");
+    assert_eq!(
+        draft["target"],
+        "https://github.com/acme/ranges/compare/main...learner:est/fix"
+    );
+    assert!(h.remote.comments.lock().unwrap().is_empty());
+    let (s, done) = h
+        .post(
+            &format!(
+                "/api/v1/publish/drafts/{}/confirm",
+                draft["id"].as_str().unwrap()
+            ),
+            json!({ "digest": draft["digest"] }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{done}");
+    assert_eq!(done["url"], "https://github.com/acme/ranges/pull/1");
+    assert_eq!(
+        h.remote.comments.lock().unwrap()[0].0,
+        "pr:acme/ranges:learner:est/fix->main"
+    );
+
+    // Issue writing: a checklist, and publishing only a text that is ready.
+    let (_, r) = h
+        .post(
+            "/api/v1/issues/review",
+            json!({ "kind": "bug", "title": "Bug", "body": "broken" }),
+        )
+        .await;
+    assert_eq!(r["score"], 0);
+    assert_eq!(r["blockers"][0]["code"], "description_missing");
+    let new_issue = format!("/api/v1/projects/{pid}/issues/draft");
+    let (s, _) = h
+        .post(
+            &new_issue,
+            json!({ "kind": "bug", "title": "Bug", "body": "broken" }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let text = "Steps:\n1. parse_range(\"5..\")\n2. run\n\nExpected: an error. Actual: a panic.";
+    let (s, draft) = h
+        .post(
+            &new_issue,
+            json!({ "kind": "bug", "title": "parse_range panics on open ranges", "body": text }),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{draft}");
+    assert_eq!(draft["kind"], "issue");
+    let (s, done) = h
+        .post(
+            &format!(
+                "/api/v1/publish/drafts/{}/confirm",
+                draft["id"].as_str().unwrap()
+            ),
+            json!({ "digest": draft["digest"] }),
+        )
+        .await;
+    assert_eq!(
+        (s, done["url"].as_str()),
+        (
+            StatusCode::OK,
+            Some("https://github.com/acme/ranges/issues/99")
+        )
+    );
+
+    // The summary keeps the commit quality.
+    let (s, _) = h
+        .post(&format!("/api/v1/tasks/{tid}/complete"), json!({}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, summary) = h.get(&format!("/api/v1/sessions/{sid}/summary")).await;
+    assert!(
+        summary["commit_quality"].as_u64().unwrap() < 100,
+        "{summary}"
+    );
 }

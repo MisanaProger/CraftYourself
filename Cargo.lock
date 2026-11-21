@@ -510,6 +510,7 @@ dependencies = [
  "est-problems",
  "est-projects",
  "est-remote",
+ "est-review",
  "est-sandbox",
  "est-storage",
  "est-workspace",

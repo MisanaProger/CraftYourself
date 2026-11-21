@@ -10,6 +10,7 @@ use crate::runtime::Runtime;
 mod analytics;
 mod conversations;
 mod discovery;
+mod git_workflow;
 mod isolated;
 mod knowledge;
 mod learning;
@@ -46,6 +47,23 @@ pub fn api() -> Router<Runtime> {
         .route("/sessions/{id}/diff", get(sessions::diff))
         .route("/sessions/{id}/events", get(sessions::events))
         .route("/sessions/{id}/summary", get(knowledge::session_summary))
+        .route(
+            "/sessions/{id}/commits/review",
+            get(git_workflow::review_commits),
+        )
+        .route(
+            "/sessions/{id}/pull-request",
+            get(git_workflow::pull_request),
+        )
+        .route(
+            "/sessions/{id}/pull-request/draft",
+            post(git_workflow::draft_pull_request),
+        )
+        .route("/issues/review", post(git_workflow::review_issue))
+        .route(
+            "/projects/{id}/issues/draft",
+            post(git_workflow::draft_issue),
+        )
         .route("/knowledge/profile", get(knowledge::profile))
         .route(
             "/sessions/{id}/workspace/open",

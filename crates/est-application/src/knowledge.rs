@@ -120,6 +120,11 @@ impl App {
             criteria_total: task.acceptance_criteria.len() as u32,
             criteria_done: task.acceptance_criteria.iter().filter(|c| c.done).count() as u32,
             adi: adi.filter(|_| outcome == SessionOutcome::Completed),
+            commit_quality: if f.own_commits > 0 {
+                self.commit_quality(session).await
+            } else {
+                None
+            },
             signals: Vec::new(),
             created_at: est_core::now(),
         };

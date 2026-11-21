@@ -239,6 +239,7 @@ mod tests {
             criteria_total: 2,
             criteria_done: 1,
             adi: Some(90),
+            commit_quality: None,
             signals: vec![],
             created_at: now,
         }

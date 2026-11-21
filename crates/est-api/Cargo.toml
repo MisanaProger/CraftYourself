@@ -16,6 +16,7 @@ est-domain.workspace = true
 est-git.workspace = true
 est-projects.workspace = true
 est-remote.workspace = true
+est-review.workspace = true
 est-learning.workspace = true
 est-sandbox.workspace = true
 est-storage.workspace = true
